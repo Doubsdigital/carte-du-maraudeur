@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Carte du Maraudeur</title>
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap">
+<style>
+/* Deux mondes : un réglage sombre sobre, puis la scène (écran verrouillé noir -> parchemin). */
+:root{
+  --night:#000; --panel:#141210; --line:#2c2620; --txt:#ece6da; --mute:#9a8f7e; --gold:#d4a84b;
+  --paper:#e9d6a8; --paper-edge:#b58c4f; --ink:#3b2412; --ink-soft:rgba(59,36,18,.6);
+  --clock:#e8e8ea; --dim:#8a8a90;
+  --display:"IM Fell English SC","Palatino Linotype",Georgia,serif;
+  --body:"IM Fell English","Palatino Linotype",Georgia,serif;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--night);color:var(--txt)}
+body{font:15px/1.45 var(--ui)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---------- Réglages ---------- */
+#setup{min-height:100%;overflow-y:auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(env(safe-area-inset-top,0px) + 20px) calc(env(safe-area-inset-bottom,0px) + 110px)}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+header h1{font-family:var(--display);font-weight:400;font-size:30px;margin:0;color:var(--paper);text-wrap:balance}
+header p{margin:4px 0 0;color:var(--mute)}
+section{display:flex;flex-direction:column;gap:10px}
+section h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin:0;font-weight:600}
+.hint{color:var(--mute);font-size:13px;margin:0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row>*{min-width:0}
+input[type=text]{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
+.row input[type=text]{flex:1 1 140px}
+select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 8px}
+.item{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.item .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.item label{font-size:11px;color:var(--mute);display:flex;flex-direction:column;gap:3px}
+.item label select{width:100%}
+.del{background:none;border:1px solid var(--line);border-radius:8px;padding:9px 12px;color:var(--mute);flex:0 0 auto}
+.add{background:none;border:1px dashed var(--line);border-radius:10px;padding:10px;color:var(--gold)}
+#preview{width:100%;aspect-ratio:3/3.4;max-width:100%;border-radius:10px;background:radial-gradient(ellipse at 50% 40%,var(--paper) 55%,var(--paper-edge) 130%)}
+.voice{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+#heard{font-family:var(--body);font-style:italic;font-size:17px;min-height:1.5em;color:var(--paper)}
+#vstate{font-size:13px;color:var(--mute)}
+.ghost{background:none;border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.steps{margin:0;padding-left:20px;color:var(--mute);font-size:13px;display:flex;flex-direction:column;gap:4px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(transparent,var(--night) 30%);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:24px calc(env(safe-area-inset-bottom,0px) + 16px)}
+.bar .in{max-width:560px;margin:0 auto;display:flex;gap:8px}
+#go{flex:1;background:var(--paper);color:var(--ink);border:0;border-radius:12px;padding:15px;font-family:var(--display);font-size:20px}
+#install{background:none;border:1px solid var(--gold);color:var(--gold);border-radius:12px;padding:0 14px}
+
+/* ---------- Scène ---------- */
+#stage{position:fixed;inset:0;background:var(--night);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;overflow:hidden}
+#lock,#map{position:absolute;inset:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(env(safe-area-inset-top,0px) + 56px) calc(env(safe-area-inset-bottom,0px) + 28px)}
+#lock{display:flex;flex-direction:column;align-items:center;color:var(--clock);transition:opacity .6s}
+#time{font-size:clamp(64px,22vw,110px);font-weight:300;letter-spacing:-2px;font-variant-numeric:tabular-nums}
+#time .c{display:inline-block}
+#stage.listening #time .c{animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:.15}}
+#date{font-size:17px;color:var(--dim);margin-top:4px;text-transform:capitalize}
+#map{background:radial-gradient(ellipse at 50% 40%,var(--paper) 55%,var(--paper-edge) 130%);
+  opacity:0;pointer-events:none;transition:opacity 1.4s ease;display:flex;flex-direction:column;align-items:center}
+#stage.open #map{opacity:1;pointer-events:auto}
+#stage.open #lock{opacity:0}
+#cv{position:absolute;inset:0;width:100%;height:100%}
+.words{position:relative;z-index:2;text-align:center;color:var(--ink);font-family:var(--body);max-width:22ch}
+.words h1{font-family:var(--display);font-weight:400;font-size:clamp(22px,6.6vw,32px);line-height:1.15;margin:0 0 8px;text-wrap:balance}
+.words p{font-style:italic;font-size:16px;margin:0;color:var(--ink-soft)}
+.reveal span{opacity:0;transition:opacity .5s}
+.reveal span.on{opacity:1}
+#bye{position:absolute;z-index:3;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
+  font-family:var(--display);font-size:clamp(28px,9vw,44px);color:var(--ink);opacity:0;transition:opacity .6s;pointer-events:none}
+#bye.on{opacity:1}
+#exit{position:absolute;z-index:5;top:0;left:0;width:90px;height:90px}
+@media (prefers-reduced-motion:reduce){#map,#lock,.reveal span{transition:none}}
+</style>
+</head>
+<body>
+
+<!-- ============ RÉGLAGES ============ -->
+<div id="setup">
+ <div class="wrap">
+  <header>
+   <h1>Carte du Maraudeur</h1>
+   <p>Tout ce que tu saisis reste sur ce téléphone.</p>
+  </header>
+
+  <section>
+   <h2>Ton nom sur la carte</h2>
+   <input type="text" id="me" placeholder="Ex. Coco">
+  </section>
+
+  <section>
+   <h2>La salle</h2>
+   <p class="hint">La carte est une grille de 3 colonnes sur 4 lignes. Place chaque pièce et choisis sa taille.</p>
+   <div id="rooms" style="display:flex;flex-direction:column;gap:8px"></div>
+   <button class="add" id="addRoom">+ Ajouter une pièce</button>
+  </section>
+
+  <section>
+   <h2>Les invités</h2>
+   <p class="hint">Chaque nom se promène dans la pièce choisie. La note s'écrit en petit sous le nom.</p>
+   <div id="guests" style="display:flex;flex-direction:column;gap:8px"></div>
+   <button class="add" id="addGuest">+ Ajouter un invité</button>
+  </section>
+
+  <section>
+   <h2>Aperçu</h2>
+   <canvas id="preview"></canvas>
+  </section>
+
+  <section>
+   <h2>Tester la voix</h2>
+   <div class="voice">
+    <div id="vstate">Micro à l'arrêt.</div>
+    <div id="heard">…</div>
+    <div class="row"><button class="ghost" id="testMic">Tester le micro</button></div>
+   </div>
+  </section>
+
+  <section>
+   <h2>Pendant le tour</h2>
+   <ol class="steps">
+    <li>Les deux-points de l'heure clignotent quand l'app t'écoute.</li>
+    <li>« Je jure solennellement que mes intentions sont mauvaises » ouvre la carte.</li>
+    <li>« Méfait accompli » la referme.</li>
+    <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer.</li>
+    <li>Pour revenir ici : trois appuis rapides dans le coin en haut à gauche.</li>
+   </ol>
+  </section>
+ </div>
+ <div class="bar"><div class="in">
+  <button id="install" hidden>Installer</button>
+  <button id="go">Lancer le tour</button>
+ </div></div>
+</div>
+
+<!-- ============ SCÈNE ============ -->
+<div id="stage" hidden>
+ <div id="lock">
+  <div id="time">--<span class="c">:</span>--</div>
+  <div id="date"></div>
+ </div>
+ <div id="map">
+  <canvas id="cv"></canvas>
+  <div class="words">
+   <h1 class="reveal" id="t1">Je jure solennellement que mes intentions sont mauvaises</h1>
+   <p class="reveal" id="t2">Le parchemin révèle ses secrets…</p>
+  </div>
+  <div id="bye">Méfait accompli</div>
+ </div>
+ <div id="exit"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const COLS=3, ROWS=4;
+const KEY='maraudeur-v1';
+
+/* ---------- Données ---------- */
+const EXAMPLE={me:'',
+ rooms:[
+  {n:'Salon',c:1,r:1,w:2,h:2},
+  {n:'Cuisine',c:3,r:1,w:1,h:1},
+  {n:'Bar',c:3,r:2,w:1,h:1},
+  {n:'Entrée',c:1,r:3,w:1,h:1},
+  {n:'Couloir',c:2,r:3,w:2,h:1},
+  {n:'Terrasse',c:1,r:4,w:2,h:1},
+  {n:'Passage secret',c:3,r:4,w:1,h:1}
+ ],
+ guests:[
+  {n:'Invité 1',note:'près du bar, comme toujours',room:'Bar'},
+  {n:'Invité 2',note:'',room:'Salon'},
+  {n:'Invité 3',note:'',room:'Cuisine'}
+ ]};
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))||null}catch(e){S=null}
+if(!S)S=JSON.parse(JSON.stringify(EXAMPLE));
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+/* ---------- Éditeur ---------- */
+function opts(n,sel,from=1){let h='';for(let i=from;i<=n;i++)h+=`<option${i==sel?' selected':''}>${i}</option>`;return h}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function renderRooms(){
+ $('rooms').innerHTML=S.rooms.map((r,i)=>`
+  <div class="item">
+   <div class="row"><input type="text" id="rn${i}" data-i="${i}" data-k="n" value="${esc(r.n)}" placeholder="Nom de la pièce"><button class="del" data-del-room="${i}" aria-label="Supprimer">✕</button></div>
+   <div class="grid">
+    <label>Colonne<select id="rc${i}" data-i="${i}" data-k="c">${opts(COLS,r.c)}</select></label>
+    <label>Ligne<select id="rr${i}" data-i="${i}" data-k="r">${opts(ROWS,r.r)}</select></label>
+    <label>Largeur<select id="rw${i}" data-i="${i}" data-k="w">${opts(COLS,r.w)}</select></label>
+    <label>Hauteur<select id="rh${i}" data-i="${i}" data-k="h">${opts(ROWS,r.h)}</select></label>
+   </div>
+  </div>`).join('');
+}
+function roomOptions(sel){return `<option value="">Partout</option>`+S.rooms.map(r=>`<option${r.n===sel?' selected':''}>${esc(r.n)}</option>`).join('')}
+function renderGuests(){
+ $('guests').innerHTML=S.guests.map((g,i)=>`
+  <div class="item">
+   <div class="row"><input type="text" id="gn${i}" data-g="${i}" data-k="n" value="${esc(g.n)}" placeholder="Prénom"><button class="del" data-del-guest="${i}" aria-label="Supprimer">✕</button></div>
+   <div class="row"><input type="text" id="gt${i}" data-g="${i}" data-k="note" value="${esc(g.note||'')}" placeholder="Note (facultatif)">
+    <select id="gr${i}" data-g="${i}" data-k="room">${roomOptions(g.room)}</select></div>
+  </div>`).join('');
+}
+$('me').value=S.me||'';
+$('me').oninput=e=>{S.me=e.target.value;save();drawPreview()};
+$('rooms').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null)return;
+ const old=S.rooms[i].n;S.rooms[i][t.dataset.k]=t.dataset.k==='n'?t.value:+t.value;
+ if(t.dataset.k==='n')S.guests.forEach(g=>{if(g.room===old)g.room=t.value});
+ save();if(t.tagName==='SELECT'||t.dataset.k==='n'){if(t.dataset.k==='n')renderGuests()}drawPreview()});
+$('rooms').addEventListener('click',e=>{const d=e.target.dataset.delRoom;if(d==null)return;S.rooms.splice(d,1);save();renderRooms();renderGuests();drawPreview()});
+$('guests').addEventListener('input',e=>{const t=e.target,i=t.dataset.g;if(i==null)return;S.guests[i][t.dataset.k]=t.value;save();drawPreview()});
+$('guests').addEventListener('click',e=>{const d=e.target.dataset.delGuest;if(d==null)return;S.guests.splice(d,1);save();renderGuests();drawPreview()});
+$('addRoom').onclick=()=>{S.rooms.push({n:'Nouvelle pièce',c:1,r:1,w:1,h:1});save();renderRooms();renderGuests();drawPreview()};
+$('addGuest').onclick=()=>{S.guests.push({n:'',note:'',room:''});save();renderGuests();$('gn'+(S.guests.length-1)).focus()};
+renderRooms();renderGuests();
+
+/* ---------- Dessin de la carte ---------- */
+function geom(W,H,top){
+ const pad=W*.06, gw=W-pad*2, gh=H-top-pad, cw=gw/COLS, ch=gh/ROWS, g=6;
+ const rooms=S.rooms.map(r=>{const c=Math.min(r.c,COLS),rr=Math.min(r.r,ROWS);
+  const w=Math.min(r.w,COLS-c+1),h=Math.min(r.h,ROWS-rr+1);
+  return{n:r.n,x:pad+(c-1)*cw+g,y:top+(rr-1)*ch+g,w:w*cw-g*2,h:h*ch-g*2}});
+ const all={x:pad,y:top,w:gw,h:gh};
+ const list=[...(S.me?[{n:S.me,note:'',room:''}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
+ const walkers=list.map((p,i)=>{const b=rooms.find(r=>r.n===p.room)||all;
+  const seed=(i*9301+49297)%233280/233280;
+  return{n:p.n,note:p.note,b,phase:seed*6.28,sp:.00016+seed*.00014,k:1.2+seed*.6}});
+ return{rooms,walkers};
+}
+function drawRooms(ctx,rooms,k){
+ ctx.strokeStyle='rgba(59,36,18,.8)';ctx.fillStyle='rgba(59,36,18,.85)';ctx.lineWidth=1.4;
+ ctx.textAlign='center';ctx.textBaseline='middle';
+ rooms.forEach((r,i)=>{
+  const p=Math.max(0,Math.min(1,k*rooms.length-i));if(!p)return;
+  let L=2*(r.w+r.h)*p,x=r.x,y=r.y;ctx.beginPath();ctx.moveTo(x,y);
+  for(const[dx,dy]of[[r.w,0],[0,r.h],[-r.w,0],[0,-r.h]]){const s=Math.abs(dx||dy),f=Math.min(1,L/s);x+=dx*f;y+=dy*f;ctx.lineTo(x,y);L-=s;if(L<=0)break}
+  ctx.stroke();
+  if(p===1){ctx.globalAlpha=.55;ctx.font=`${Math.max(10,Math.min(15,r.w/8))}px "IM Fell English SC",Georgia,serif`;
+   ctx.fillText(r.n,r.x+r.w/2,r.y+13);ctx.globalAlpha=1}
+ });
+}
+function pos(w,t){const b=w.b,a=w.phase+t*w.sp,mx=b.w*.36,my=b.h*.3;
+ return[b.x+b.w/2+Math.cos(a)*mx,b.y+b.h/2+8+Math.sin(a*w.k)*my,a]}
+function drawWalkers(ctx,walkers,ts,alpha){
+ ctx.fillStyle='rgba(59,36,18,.9)';
+ walkers.forEach(w=>{
+  for(let j=0;j<6;j++){const t=ts-j*380,[x,y]=pos(w,t),[x2,y2]=pos(w,t+40);
+   const ang=Math.atan2(y2-y,x2-x),side=(j%2?1:-1)*4;
+   ctx.save();ctx.translate(x+Math.cos(ang+Math.PI/2)*side,y+Math.sin(ang+Math.PI/2)*side);ctx.rotate(ang+Math.PI/2);
+   ctx.globalAlpha=(1-j/6)*.85*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
+  const[x,y]=pos(w,ts);ctx.globalAlpha=alpha;
+  ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,x,y-14);
+  if(w.note){ctx.globalAlpha=.65*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,x,y-27)}
+  ctx.globalAlpha=1;
+ });
+}
+function fit(c){const d=devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;c.width=W*d;c.height=H*d;const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return[x,W,H]}
+let pRaf;
+function drawPreview(){cancelAnimationFrame(pRaf);const c=$('preview');if(!c.clientWidth)return;
+ const[ctx,W,H]=fit(c);const G=geom(W,H,H*.05);
+ const loop=ts=>{ctx.clearRect(0,0,W,H);drawRooms(ctx,G.rooms,1);drawWalkers(ctx,G.walkers,ts,1);pRaf=requestAnimationFrame(loop)};pRaf=requestAnimationFrame(loop)}
+addEventListener('resize',()=>{if(!$('setup').hidden)drawPreview()});
+document.fonts&&document.fonts.ready.then(drawPreview);drawPreview();
+
+/* ---------- Reconnaissance vocale ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const norm=s=>s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const isOpen=t=>/jur/.test(t)&&/(solenn|solen|intention|mauvais)/.test(t);
+const isClose=t=>/(mefait|me fait|meffet|accompli)/.test(t);
+let rec=null,mode=null,wantOn=false,coolUntil=0,onHeard=null;
+function micStart(m,handler){
+ if(!SR){return false}
+ mode=m;onHeard=handler;wantOn=true;
+ if(rec){try{rec.abort()}catch(e){}}
+ rec=new SR();rec.lang='fr-FR';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=3;
+ rec.onstart=()=>setListening(true);
+ rec.onresult=e=>{let txt='';for(let i=Math.max(0,e.results.length-3);i<e.results.length;i++){for(let a=0;a<e.results[i].length;a++)txt+=' '+e.results[i][a].transcript}
+  onHeard&&onHeard(norm(txt),e.results[e.results.length-1][0].transcript)};
+ rec.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){wantOn=false;setListening(false,'Micro refusé. Autorise-le dans les réglages du site.')}};
+ rec.onend=()=>{setListening(false);if(wantOn)setTimeout(()=>{if(wantOn)try{rec.start()}catch(e){}},200)};
+ try{rec.start()}catch(e){}
+ return true;
+}
+function micReset(){if(rec)try{rec.abort()}catch(e){}}
+function micStop(){wantOn=false;if(rec)try{rec.abort()}catch(e){};setListening(false)}
+function setListening(on,msg){
+ $('stage').classList.toggle('listening',on&&mode==='show');
+ if(mode==='test')$('vstate').textContent=msg||(on?'J\'écoute… dis la phrase.':(wantOn?'Relance…':'Micro à l\'arrêt.'));
+}
+
+/* Test depuis les réglages */
+$('testMic').onclick=()=>{
+ if(wantOn&&mode==='test'){micStop();$('testMic').textContent='Tester le micro';return}
+ if(!micStart('test',(t,raw)=>{$('heard').textContent=raw;
+   if(isOpen(t))$('vstate').textContent='✓ Phrase d\'ouverture reconnue';
+   else if(isClose(t))$('vstate').textContent='✓ « Méfait accompli » reconnu';})){
+  $('vstate').textContent='La reconnaissance vocale n\'est pas disponible dans ce navigateur. Utilise Chrome.';return}
+ $('testMic').textContent='Arrêter le test';
+};
+
+/* ---------- Scène ---------- */
+const stage=$('stage'),cv=$('cv');let ctx,W,H,G,raf,t0=0;
+function prep(el){el.innerHTML=el.textContent.trim().split(/\s+/).map(w=>`<span>${w}</span>`).join(' ')}
+prep($('t1'));prep($('t2'));
+function write(el,d){[...el.children].forEach((s,i)=>setTimeout(()=>s.classList.add('on'),d+i*220))}
+function unwrite(){document.querySelectorAll('.reveal span').forEach(s=>s.classList.remove('on'))}
+function tick(){const d=new Date();
+ $('time').innerHTML=String(d.getHours()).padStart(2,'0')+'<span class="c">:</span>'+String(d.getMinutes()).padStart(2,'0');
+ $('date').textContent=d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
+setInterval(tick,5000);tick();
+
+function sizeStage(){[ctx,W,H]=fit(cv);const words=document.querySelector('.words');
+ const top=words.offsetTop+words.offsetHeight+16;G=geom(W,H,top)}
+function frame(ts){const e=ts-t0;ctx.clearRect(0,0,W,H);
+ drawRooms(ctx,G.rooms,Math.min(1,e/2400));
+ if(e>2600)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-2600)/1200));
+ raf=requestAnimationFrame(frame)}
+let isMapOpen=false;
+function openMap(){if(isMapOpen||Date.now()<coolUntil)return;isMapOpen=true;coolUntil=Date.now()+2500;
+ $('bye').classList.remove('on');stage.classList.add('open');sizeStage();
+ t0=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);
+ write($('t1'),500);write($('t2'),500+$('t1').children.length*220+300);
+ navigator.vibrate&&navigator.vibrate(25)}
+function closeMap(){if(!isMapOpen||Date.now()<coolUntil)return;isMapOpen=false;coolUntil=Date.now()+2500;
+ $('bye').classList.add('on');unwrite();
+ setTimeout(()=>{stage.classList.remove('open');setTimeout(()=>{cancelAnimationFrame(raf);$('bye').classList.remove('on')},1400)},1400)}
+
+let wake=null;
+async function getWake(){try{wake=await navigator.wakeLock.request('screen')}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!stage.hidden)getWake()});
+
+async function goFull(){
+ const el=document.documentElement;
+ try{if(!document.fullscreenElement&&el.requestFullscreen)await el.requestFullscreen({navigationUI:'hide'})}catch(e){}
+ try{await screen.orientation.lock('portrait')}catch(e){}
+}
+$('go').onclick=async()=>{
+ micStop();cancelAnimationFrame(pRaf);
+ await goFull();getWake();
+ $('setup').hidden=true;stage.hidden=false;isMapOpen=false;stage.classList.remove('open');unwrite();tick();
+ micStart('show',t=>{if(!isMapOpen&&isOpen(t)){openMap();micReset()}else if(isMapOpen&&isClose(t)){closeMap();micReset()}});
+};
+/* Secours tactile */
+let hold;
+$('lock').addEventListener('pointerdown',()=>{goFull();hold=setTimeout(openMap,700)});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>$('lock').addEventListener(ev,()=>clearTimeout(hold)));
+let lastTap=0;
+$('map').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastTap<350){coolUntil=0;closeMap()}lastTap=n});
+/* Sortie : 3 appuis en haut à gauche */
+let taps=[];
+$('exit').addEventListener('pointerdown',e=>{e.stopPropagation();const n=Date.now();taps=taps.filter(t=>n-t<1500);taps.push(n);
+ if(taps.length>=3){taps=[];micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
+  try{wake&&wake.release()}catch(e){};drawPreview()}});
+addEventListener('resize',()=>{if(isMapOpen)sizeStage()});
+
+/* ---------- Installation ---------- */
+let deferred;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('install').hidden=false});
+$('install').onclick=async()=>{if(!deferred)return;deferred.prompt();await deferred.userChoice;deferred=null;$('install').hidden=true};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>

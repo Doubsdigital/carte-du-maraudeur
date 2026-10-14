@@ -288,29 +288,121 @@ $('addGuest').onclick=()=>{S.guests.push({n:'',note:'',room:''});save();renderGu
 renderRooms();renderGuests();
 
 /* ---------- Dessin de la carte ---------- */
+/* Hasard reproductible : même pièce = même forme à chaque lancement */
+function hash(s){let h=2166136261;for(const c of String(s))h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0}
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const INK='rgba(59,36,18,', PAPER='#ecd9ac';
+
+function roomShape(r,R){
+ const{x,y,w,h}=r,m=Math.min(w,h);
+ const C=[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];
+ const cham=C.map(()=>R()<.3?m*(.1+R()*.1):0);
+ const pts=[],sides=[];
+ for(let i=0;i<4;i++){
+  const A=C[i],B=C[(i+1)%4],dx=B[0]-A[0],dy=B[1]-A[1],L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,nx=-uy,ny=ux; // normale vers l'intérieur
+  const a=cham[i],b=cham[(i+1)%4];
+  pts.push([A[0]+ux*a,A[1]+uy*a]);
+  const f=R(),t1=.22+R()*.3,t2=Math.min(.8,t1+.15+R()*.25),d=m*(.12+R()*.14);
+  let feat='none';
+  if(f<.32&&L>40){feat='notch';
+   const P=t=>[A[0]+dx*t,A[1]+dy*t];const p1=P(t1),p2=P(t2);
+   pts.push(p1,[p1[0]+nx*d,p1[1]+ny*d],[p2[0]+nx*d,p2[1]+ny*d],p2);
+  }else if(f<.48&&L>50){feat='apse';
+   const c=(t1+t2)/2,rad=Math.min(L*(t2-t1)/2,m*.22),cx=A[0]+dx*c,cy=A[1]+dy*c;
+   for(let k=0;k<=12;k++){const an=Math.PI*k/12,s=-Math.cos(an)*rad,q=Math.sin(an)*rad;pts.push([cx+ux*s+nx*q,cy+uy*s+ny*q])}
+  }
+  pts.push([B[0]-ux*b,B[1]-uy*b]);
+  sides.push({A,dx,dy,feat,ux,uy});
+ }
+ const doors=[];const free=sides.filter(s=>s.feat==='none');
+ const nd=1+(R()<.5?1:0);
+ for(let i=0;i<nd&&free.length;i++){const s=free.splice(Math.floor(R()*free.length),1)[0],t=.35+R()*.3;
+  doors.push({x:s.A[0]+s.dx*t,y:s.A[1]+s.dy*t,ux:s.ux,uy:s.uy})}
+ const tower=R()<.3?{c:C[Math.floor(R()*4)],r:m*.11}:null;
+ const stairs=R()<.3;
+ return{pts,doors,tower,stairs};
+}
+
 function geom(W,H,top){
- const pad=W*.06, gw=W-pad*2, gh=H-top-pad, cw=gw/COLS, ch=gh/ROWS, g=6;
- const rooms=S.rooms.map(r=>{const c=Math.min(r.c,COLS),rr=Math.min(r.r,ROWS);
+ const pad=W*.07, gw=W-pad*2, gh=H-top-pad*1.2, inset=14, cw=(gw-inset*2)/COLS, ch=(gh-inset*2)/ROWS, g=7;
+ const ox=pad+inset, oy=top+inset;
+ const rooms=S.rooms.map((r,i)=>{const c=Math.min(r.c,COLS),rr=Math.min(r.r,ROWS);
   const w=Math.min(r.w,COLS-c+1),h=Math.min(r.h,ROWS-rr+1);
-  return{n:r.n,x:pad+(c-1)*cw+g,y:top+(rr-1)*ch+g,w:w*cw-g*2,h:h*ch-g*2}});
- const all={x:pad,y:top,w:gw,h:gh};
+  const o={n:r.n,x:ox+(c-1)*cw+g,y:oy+(rr-1)*ch+g,w:w*cw-g*2,h:h*ch-g*2};
+  o.shape=roomShape(o,rng(hash(r.n+'|'+i)));return o});
+ const all={x:pad+inset,y:top+inset,w:gw-inset*2,h:gh-inset*2};
  const list=[...(S.me?[{n:S.me,note:'',room:''}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
  const walkers=list.map((p,i)=>{const b=rooms.find(r=>r.n===p.room)||all;
   const seed=(i*9301+49297)%233280/233280;
   return{n:p.n,note:p.note,b,phase:seed*6.28,sp:.00016+seed*.00014,k:1.2+seed*.6}});
- return{rooms,walkers};
+ return{rooms,walkers,castle:{x:pad,y:top,w:gw,h:gh},top};
 }
-function drawRooms(ctx,rooms,k){
- ctx.strokeStyle='rgba(59,36,18,.8)';ctx.fillStyle='rgba(59,36,18,.85)';ctx.lineWidth=1.4;
- ctx.textAlign='center';ctx.textBaseline='middle';
- rooms.forEach((r,i)=>{
-  const p=Math.max(0,Math.min(1,k*rooms.length-i));if(!p)return;
-  let L=2*(r.w+r.h)*p,x=r.x,y=r.y;ctx.beginPath();ctx.moveTo(x,y);
-  for(const[dx,dy]of[[r.w,0],[0,r.h],[-r.w,0],[0,-r.h]]){const s=Math.abs(dx||dy),f=Math.min(1,L/s);x+=dx*f;y+=dy*f;ctx.lineTo(x,y);L-=s;if(L<=0)break}
-  ctx.stroke();
-  if(p===1){ctx.globalAlpha=.55;ctx.font=`${Math.max(10,Math.min(15,r.w/8))}px "IM Fell English SC",Georgia,serif`;
-   ctx.fillText(r.n,r.x+r.w/2,r.y+13);ctx.globalAlpha=1}
+
+/* Parchemin vieilli : grain, taches, plis */
+function paperLayer(W,H,d){
+ const c=document.createElement('canvas');c.width=W*d;c.height=H*d;const x=c.getContext('2d');x.scale(d,d);
+ const R=rng(7);
+ for(let i=0;i<7;i++){const cx=R()*W,cy=R()*H,r=40+R()*120,g=x.createRadialGradient(cx,cy,0,cx,cy,r);
+  g.addColorStop(0,'rgba(140,95,40,.10)');g.addColorStop(.7,'rgba(140,95,40,.05)');g.addColorStop(1,'rgba(140,95,40,0)');x.fillStyle=g;x.fillRect(0,0,W,H)}
+ for(let i=0;i<W*H/90;i++){x.fillStyle=R()<.5?'rgba(90,60,25,.06)':'rgba(255,245,215,.07)';x.fillRect(R()*W,R()*H,1.2,1.2)}
+ const fold=(x1,y1,x2,y2,ox,oy)=>{x.lineWidth=1;x.strokeStyle='rgba(110,75,35,.13)';x.beginPath();x.moveTo(x1,y1);x.lineTo(x2,y2);x.stroke();
+  x.strokeStyle='rgba(255,248,225,.18)';x.beginPath();x.moveTo(x1+ox,y1+oy);x.lineTo(x2+ox,y2+oy);x.stroke()};
+ fold(W/2,0,W/2,H,1.5,0);fold(0,H/3,W,H/3,0,1.5);fold(0,H*2/3,W,H*2/3,0,1.5);
+ return c;
+}
+
+/* Encre du château : remparts, tours, hachures, pièces, portes, escaliers */
+function inkLayer(W,H,d,G){
+ const c=document.createElement('canvas');c.width=W*d;c.height=H*d;const x=c.getContext('2d');x.scale(d,d);
+ const K=G.castle,R=rng(hash(S.rooms.map(r=>r.n).join()));
+ x.lineJoin='round';x.lineCap='round';
+ // hachures de pierre
+ x.save();x.beginPath();x.rect(K.x,K.y,K.w,K.h);x.clip();x.strokeStyle=INK+'.22)';x.lineWidth=.8;
+ for(let i=-K.h;i<K.w;i+=7){x.beginPath();x.moveTo(K.x+i,K.y+K.h);x.lineTo(K.x+i+K.h,K.y);x.stroke()}
+ x.restore();
+ // créneaux
+ x.fillStyle=INK+'.75)';const cr=9;
+ for(let px=K.x+cr;px<K.x+K.w-cr;px+=cr*2){x.fillRect(px,K.y-5,cr,5);x.fillRect(px,K.y+K.h,cr,5)}
+ for(let py=K.y+cr;py<K.y+K.h-cr;py+=cr*2){x.fillRect(K.x-5,py,5,cr);x.fillRect(K.x+K.w,py,5,cr)}
+ // rempart double
+ x.strokeStyle=INK+'.85)';x.lineWidth=5;x.strokeRect(K.x,K.y,K.w,K.h);x.strokeStyle=PAPER;x.lineWidth=2;x.strokeRect(K.x,K.y,K.w,K.h);
+ // tours d'angle
+ [[K.x,K.y],[K.x+K.w,K.y],[K.x+K.w,K.y+K.h],[K.x,K.y+K.h]].forEach(([tx,ty])=>{
+  x.fillStyle=PAPER;x.beginPath();x.arc(tx,ty,15,0,7);x.fill();
+  x.strokeStyle=INK+'.85)';x.lineWidth=3;x.stroke();x.lineWidth=1;x.beginPath();x.arc(tx,ty,9,0,7);x.stroke();
+  for(let a=0;a<8;a++){const an=a*Math.PI/4;x.beginPath();x.moveTo(tx+Math.cos(an)*9,ty+Math.sin(an)*9);x.lineTo(tx+Math.cos(an)*15,ty+Math.sin(an)*15);x.stroke()}});
+ // pièces
+ G.rooms.forEach(r=>{const S_=r.shape;
+  const path=()=>{x.beginPath();S_.pts.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.closePath()};
+  path();x.fillStyle='rgba(236,217,172,.94)';x.fill();
+  // dallage léger
+  x.save();path();x.clip();x.strokeStyle=INK+'.07)';x.lineWidth=.6;
+  for(let gx=r.x;gx<r.x+r.w;gx+=14){x.beginPath();x.moveTo(gx,r.y);x.lineTo(gx,r.y+r.h);x.stroke()}
+  for(let gy=r.y;gy<r.y+r.h;gy+=14){x.beginPath();x.moveTo(r.x,gy);x.lineTo(r.x+r.w,gy);x.stroke()}
+  x.restore();
+  if(S_.tower){const t=S_.tower;x.fillStyle=PAPER;x.beginPath();x.arc(t.c[0],t.c[1],t.r,0,7);x.fill()}
+  path();x.strokeStyle=INK+'.88)';x.lineWidth=4.5;x.stroke();x.strokeStyle=PAPER;x.lineWidth=1.6;x.stroke();
+  if(S_.tower){const t=S_.tower;x.beginPath();x.arc(t.c[0],t.c[1],t.r,0,7);x.strokeStyle=INK+'.88)';x.lineWidth=3;x.stroke();
+   x.lineWidth=1;x.beginPath();x.arc(t.c[0],t.c[1],t.r*.55,0,7);x.stroke()}
+  S_.doors.forEach(dr=>{x.strokeStyle='rgba(236,217,172,1)';x.lineWidth=6;x.beginPath();x.moveTo(dr.x-dr.ux*6,dr.y-dr.uy*6);x.lineTo(dr.x+dr.ux*6,dr.y+dr.uy*6);x.stroke();
+   x.strokeStyle=INK+'.7)';x.lineWidth=1;x.beginPath();x.arc(dr.x-dr.ux*6,dr.y-dr.uy*6,12,Math.atan2(dr.uy,dr.ux),Math.atan2(dr.uy,dr.ux)+Math.PI/2);x.stroke()});
+  if(S_.stairs){const sw=Math.min(28,r.w*.25),sx=r.x+r.w-sw-8,sy=r.y+r.h-sw-8;x.strokeStyle=INK+'.55)';x.lineWidth=1;
+   x.strokeRect(sx,sy,sw,sw);for(let k=1;k<6;k++){x.beginPath();x.moveTo(sx,sy+sw*k/6);x.lineTo(sx+sw,sy+sw*k/6);x.stroke()}}
+  x.fillStyle=INK+'.6)';x.textAlign='center';x.textBaseline='middle';
+  x.font=`${Math.max(10,Math.min(15,r.w/8))}px "IM Fell English SC",Georgia,serif`;x.fillText(r.n,r.x+r.w/2,r.y+r.h*.2+6);
  });
+ return c;
+}
+
+/* L'encre se répand depuis le centre, bord irrégulier */
+function inkReveal(ctx,layer,W,H,k){
+ if(k>=1){ctx.drawImage(layer,0,0,W,H);return}
+ if(k<=0)return;
+ const cx=W/2,cy=H*.6,Rm=Math.hypot(W,H)*.6*k;
+ ctx.save();ctx.beginPath();
+ for(let i=0;i<=72;i++){const a=i/72*Math.PI*2,n=.82+.1*Math.sin(a*5+k*6)+.08*Math.sin(a*11-k*9);const r=Rm*n;
+  i?ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r):ctx.moveTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r)}
+ ctx.closePath();ctx.clip();ctx.drawImage(layer,0,0,W,H);ctx.restore();
 }
 function pos(w,t){const b=w.b,a=w.phase+t*w.sp,mx=b.w*.36,my=b.h*.3;
  return[b.x+b.w/2+Math.cos(a)*mx,b.y+b.h/2+8+Math.sin(a*w.k)*my,a]}
@@ -330,8 +422,8 @@ function drawWalkers(ctx,walkers,ts,alpha){
 function fit(c){const d=devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;c.width=W*d;c.height=H*d;const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return[x,W,H]}
 let pRaf;
 function drawPreview(){cancelAnimationFrame(pRaf);const c=$('preview');if(!c.clientWidth)return;
- const[ctx,W,H]=fit(c);const G=geom(W,H,H*.05);
- const loop=ts=>{ctx.clearRect(0,0,W,H);drawRooms(ctx,G.rooms,1);drawWalkers(ctx,G.walkers,ts,1);pRaf=requestAnimationFrame(loop)};pRaf=requestAnimationFrame(loop)}
+ const[ctx,W,H]=fit(c);const d=devicePixelRatio||1,G=geom(W,H,H*.06),P=paperLayer(W,H,d),I=inkLayer(W,H,d,G);
+ const loop=ts=>{ctx.clearRect(0,0,W,H);ctx.drawImage(P,0,0,W,H);ctx.drawImage(I,0,0,W,H);ctx.fillStyle=INK+'.9)';ctx.textAlign='center';ctx.textBaseline='middle';drawWalkers(ctx,G.walkers,ts,1);pRaf=requestAnimationFrame(loop)};pRaf=requestAnimationFrame(loop)}
 addEventListener('resize',()=>{if(!$('setup').hidden)drawPreview()});
 document.fonts&&document.fonts.ready.then(drawPreview);drawPreview();
 
@@ -393,12 +485,15 @@ function tick(){const d=new Date();
  $('date').textContent=d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
 setInterval(tick,5000);tick();
 
+let PAP,INKL;
 function sizeStage(){[ctx,W,H]=fit(cv);const words=document.querySelector('.words');
- const top=words.offsetTop+words.offsetHeight+16;G=geom(W,H,top)}
+ const top=Math.max(words.offsetTop+words.offsetHeight+22,H*.28);G=geom(W,H,top);const d=devicePixelRatio||1;PAP=paperLayer(W,H,d);INKL=inkLayer(W,H,d,G)}
 function frame(ts){const e=ts-t0;ctx.clearRect(0,0,W,H);
  ctx.globalAlpha=1;if(inkOut){const f=Math.max(0,1-(ts-inkOut)/1400);cv.style.opacity=f}else cv.style.opacity=1;
- drawRooms(ctx,G.rooms,Math.min(1,e/2400));
- if(e>2600)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-2600)/1200));
+ ctx.drawImage(PAP,0,0,W,H);
+ const k=Math.min(1,e/2600);inkReveal(ctx,INKL,W,H,1-Math.pow(1-k,2));
+ ctx.fillStyle=INK+'.9)';ctx.textAlign='center';ctx.textBaseline='middle';
+ if(e>2800)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-2800)/1200));
  raf=requestAnimationFrame(frame)}
 let isMapOpen=false,inkOut=0,lit=false,tauntOpen=false;
 function openTaunt(){if(tauntOpen)return;tauntOpen=true;

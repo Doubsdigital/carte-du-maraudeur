@@ -1,5 +1,5 @@
 // Réseau d'abord (toujours la dernière version), cache seulement hors ligne.
-const C='maraudeur-v16';
+const C='maraudeur-v17';
 const FILES=['./','index.html','manifest.webmanifest','icon-192.png','icon-512.png'];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(C).then(c=>Promise.all(FILES.map(f=>fetch(f,{cache:'reload'}).then(r=>c.put(f,r))))));

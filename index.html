@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 16 -->
+<!-- version 17 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -410,29 +410,52 @@ function inkReveal(ctx,layer,W,H,k){
 }
 function pos(w,t){const b=w.b,a=w.phase+t*w.sp,mx=b.w*.36,my=b.h*.3;
  return[b.x+b.w/2+Math.cos(a)*mx,b.y+b.h/2+8+Math.sin(a*w.k)*my,a]}
+/* Humeur de chaque invité : marche, flâne, se presse, ou s'arrête (parfois plusieurs minutes) */
+const rnd=(a,b)=>a+Math.random()*(b-a);
+function nextMood(w){const r=Math.random();
+ if(r<.42){w.target=rnd(.8,1.2);w.until=w.clock+rnd(8e3,25e3)}          // marche
+ else if(r<.56){w.target=rnd(1.6,2.2);w.until=w.clock+rnd(3e3,8e3)}     // se presse
+ else if(r<.72){w.target=rnd(.3,.55);w.until=w.clock+rnd(6e3,16e3)}     // flâne
+ else{w.target=0;w.until=w.clock+(Math.random()<.25?rnd(60e3,240e3):rnd(6e3,40e3))} // s'arrête
+}
+function stepWalkers(walkers,ts){
+ walkers.forEach(w=>{
+  if(w.u==null){w.u=Math.random()*1e5;w.base=rnd(.6,1.4);w.cm=1;w.clock=0;w.lastTs=ts;w.stepAt=ts;w.cur=null;nextMood(w)}
+  const dt=Math.min(100,ts-w.lastTs);w.lastTs=ts;w.clock+=dt;
+  if(w.clock>w.until)nextMood(w);
+  w.cm+=(w.target-w.cm)*Math.min(1,dt/700);                 // changement d'allure progressif
+  if(w.target===0&&w.cm<.04)w.cm=0;
+  w.u+=dt*w.base*w.cm;
+ });
+}
 function drawWalkers(ctx,walkers,ts,alpha){
+ stepWalkers(walkers,ts);
  ctx.fillStyle='rgba(59,36,18,.9)';
  walkers.forEach(w=>{
+  const U=w.u;
   if(w.ghost){ /* Fantôme : glisse à travers les murs, empreintes pâles et continues */
-   for(let j=0;j<6;j++){const t=ts-j*380,[x,y]=pos(w,t),[x2,y2]=pos(w,t+40);
+   for(let j=0;j<6;j++){const t=U-j*380,[x,y]=pos(w,t),[x2,y2]=pos(w,t+40);
     const ang=Math.atan2(y2-y,x2-x),side=(j%2?1:-1)*4;
     ctx.save();ctx.translate(x+Math.cos(ang+Math.PI/2)*side,y+Math.sin(ang+Math.PI/2)*side);ctx.rotate(ang+Math.PI/2);
     ctx.globalAlpha=(1-j/6)*.5*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
-   const[gx,gy]=pos(w,ts);ctx.globalAlpha=.6*alpha;
+   const[gx,gy]=pos(w,U);ctx.globalAlpha=.6*alpha;
    ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,gx,gy-14);
    if(w.note){ctx.globalAlpha=.4*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,gx,gy-27)}
    ctx.globalAlpha=1;return}
-  /* Vrais pas : un pied se pose toutes les 420 ms, reste en place, alterne gauche/droite, puis s'efface */
-  const STEP=420,N=7,now=ts/STEP,cur=Math.floor(now),fr=now-cur;
-  for(let j=0;j<N;j++){const m=cur-j,t=m*STEP,[x,y]=pos(w,t),[x2,y2]=pos(w,t+60);
-   const ang=Math.atan2(y2-y,x2-x),side=(m%2?1:-1)*3.6;
-   const age=(j+fr)/N,fade=j===0?Math.min(1,fr*4):1; // le dernier pied apparaît vite, les anciens pâlissent
+  /* Vrais pas : un pied par foulée, posé et immobile, alterné gauche/droite */
+  const STEP=420,N=7,now=U/STEP,cur=Math.floor(now),fr=now-cur;
+  if(cur!==w.cur){w.cur=cur;w.stepAt=ts}
+  const still=ts-w.stepAt;                                        // temps depuis le dernier pas
+  const foot=(m,side,a)=>{const t=m*STEP,[x,y]=pos(w,t),[x2,y2]=pos(w,t+60),ang=Math.atan2(y2-y,x2-x);
    ctx.save();ctx.translate(x+Math.cos(ang+Math.PI/2)*side,y+Math.sin(ang+Math.PI/2)*side);ctx.rotate(ang+Math.PI/2);
-   ctx.globalAlpha=Math.max(0,1-age)*.9*fade*alpha;
-   ctx.beginPath();ctx.ellipse(0,.8,2.2,3.2,0,0,7);ctx.fill();          // plante
-   ctx.beginPath();ctx.ellipse(0,-3.6,1.6,1.4,0,0,7);ctx.fill();        // talon
-   ctx.restore()}
-  const[x,y]=pos(w,ts-STEP);ctx.globalAlpha=alpha;
+   ctx.globalAlpha=a;ctx.beginPath();ctx.ellipse(0,.8,2.2,3.2,0,0,7);ctx.fill();ctx.beginPath();ctx.ellipse(0,-3.6,1.6,1.4,0,0,7);ctx.fill();ctx.restore()};
+  const trailFade=Math.exp(-Math.max(0,still-1500)/4000);         // à l'arrêt, la traîne s'efface
+  for(let j=N-1;j>=0;j--){const m=cur-j,age=(j+Math.min(fr,.999))/N;
+   let a=Math.max(0,1-age)*.9;if(j===0)a*=Math.min(1,still/120);if(j>=2)a*=trailFade;
+   foot(m,(m%2?1:-1)*3.6,a*alpha)}
+  if(still>900){ /* immobile : les deux pieds côte à côte */
+   const a=Math.min(1,(still-900)/600)*.9*alpha;foot(cur,(cur%2?-1:1)*3.6,a)}
+  const[x,y]=pos(w,(cur-1)*STEP);ctx.globalAlpha=alpha;
   ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,x,y-14);
   if(w.note){ctx.globalAlpha=.65*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,x,y-27)}
   ctx.globalAlpha=1;

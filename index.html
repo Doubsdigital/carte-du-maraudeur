@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 19 -->
+<!-- version 20 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -118,7 +118,8 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 
   <section>
    <h2>Ton nom sur la carte</h2>
-   <input type="text" id="me" placeholder="Ex. Coco">
+   <div class="row"><input type="text" id="me" placeholder="Ex. Coco">
+    <select id="meMode"><option value="visit">Se promène partout</option><option value="ghost">Fantôme</option></select></div>
   </section>
 
   <section>
@@ -156,7 +157,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 
   <section>
    <h2>Les invités</h2>
-   <p class="hint">Chaque nom marche pas à pas dans la pièce choisie. Avec « Partout · fantôme », il glisse à travers les murs de tout le château. La note s'écrit en petit au-dessus du nom.</p>
+   <p class="hint">« Reste dans sa pièce » : se balade dans sa pièce. « Se promène partout » : va de pièce en pièce par les portes et les couloirs, plus souvent dans sa pièce préférée. « Fantôme » : glisse à travers les murs. La note s'écrit en petit au-dessus du nom.</p>
    <div id="guests" style="display:flex;flex-direction:column;gap:8px"></div>
    <button class="add" id="addGuest">+ Ajouter un invité</button>
   </section>
@@ -232,7 +233,7 @@ const EXAMPLE={me:'',
   {n:'Passage secret',c:3,r:4,w:1,h:1}
  ],
  guests:[
-  {n:'Invité 1',note:'près du bar, comme toujours',room:'Bar'},
+  {n:'Invité 1',note:'près du bar, comme toujours',room:'Bar',mode:'visit'},
   {n:'Invité 2',note:'',room:'Salon'},
   {n:'Invité 3',note:'',room:'Cuisine'}
  ]};
@@ -248,6 +249,7 @@ if(!S)S=JSON.parse(JSON.stringify(EXAMPLE));
 if(!S.insc)S.insc=INSC.slice();
 if(!S.taunt)S.taunt=TAUNT.slice();
 if(!S.lumode)S.lumode='torch';
+S.guests.forEach(g=>{if(!g.mode)g.mode=g.room?'room':'ghost'});if(!S.meMode)S.meMode='visit';
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
 /* ---------- Éditeur ---------- */
@@ -265,16 +267,19 @@ function renderRooms(){
    </div>
   </div>`).join('');
 }
-function roomOptions(sel){return `<option value="">Partout · fantôme</option>`+S.rooms.map(r=>`<option${r.n===sel?' selected':''}>${esc(r.n)}</option>`).join('')}
+function roomOptions(sel,mode){return (mode==='visit'?`<option value="">Pas de pièce préférée</option>`:'')+S.rooms.map(r=>`<option${r.n===sel?' selected':''}>${esc(r.n)}</option>`).join('')}
+const MODES=[['room','Reste dans sa pièce'],['visit','Se promène partout'],['ghost','Fantôme (traverse les murs)']];
 function renderGuests(){
  $('guests').innerHTML=S.guests.map((g,i)=>`
   <div class="item">
    <div class="row"><input type="text" id="gn${i}" data-g="${i}" data-k="n" value="${esc(g.n)}" placeholder="Prénom"><button class="del" data-del-guest="${i}" aria-label="Supprimer">✕</button></div>
-   <div class="row"><input type="text" id="gt${i}" data-g="${i}" data-k="note" value="${esc(g.note||'')}" placeholder="Note (facultatif)">
-    <select id="gr${i}" data-g="${i}" data-k="room">${roomOptions(g.room)}</select></div>
+   <input type="text" id="gt${i}" data-g="${i}" data-k="note" value="${esc(g.note||'')}" placeholder="Note (facultatif)">
+   <div class="row"><select id="gm${i}" data-g="${i}" data-k="mode" style="flex:1 1 150px">${MODES.map(([v,l])=>`<option value="${v}"${g.mode===v?' selected':''}>${l}</option>`).join('')}</select>
+    ${g.mode==='ghost'?'':`<select id="gr${i}" data-g="${i}" data-k="room" style="flex:1 1 120px" aria-label="${g.mode==='visit'?'Pièce préférée':'Pièce'}">${roomOptions(g.room,g.mode)}</select>`}</div>
   </div>`).join('');
 }
 $('me').value=S.me||'';
+$('meMode').value=S.meMode||'visit';$('meMode').onchange=e=>{S.meMode=e.target.value;save();drawPreview()};
 $('lumode').value=S.lumode;$('lumode').onchange=e=>{S.lumode=e.target.value;save()};
 [0,1,2,3].forEach(i=>{const el=$('taunt'+i);el.value=S.taunt[i]||'';el.oninput=()=>{S.taunt[i]=el.value;save()}});
 [0,1,2].forEach(i=>{const el=$('insc'+i);el.value=S.insc[i]||'';el.oninput=()=>{S.insc[i]=el.value;save()}});
@@ -284,10 +289,12 @@ $('rooms').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==nul
  if(t.dataset.k==='n')S.guests.forEach(g=>{if(g.room===old)g.room=t.value});
  save();if(t.tagName==='SELECT'||t.dataset.k==='n'){if(t.dataset.k==='n')renderGuests()}drawPreview()});
 $('rooms').addEventListener('click',e=>{const d=e.target.dataset.delRoom;if(d==null)return;S.rooms.splice(d,1);save();renderRooms();renderGuests();drawPreview()});
-$('guests').addEventListener('input',e=>{const t=e.target,i=t.dataset.g;if(i==null)return;S.guests[i][t.dataset.k]=t.value;save();drawPreview()});
+$('guests').addEventListener('input',e=>{const t=e.target,i=t.dataset.g;if(i==null)return;const g=S.guests[i];g[t.dataset.k]=t.value;
+ if(t.dataset.k==='mode'){if(g.mode==='room'&&!S.rooms.some(r=>r.n===g.room))g.room=(S.rooms[0]||{}).n||'';renderGuests()}
+ save();drawPreview()});
 $('guests').addEventListener('click',e=>{const d=e.target.dataset.delGuest;if(d==null)return;S.guests.splice(d,1);save();renderGuests();drawPreview()});
 $('addRoom').onclick=()=>{S.rooms.push({n:'Nouvelle pièce',c:1,r:1,w:1,h:1});save();renderRooms();renderGuests();drawPreview()};
-$('addGuest').onclick=()=>{S.guests.push({n:'',note:'',room:''});save();renderGuests();$('gn'+(S.guests.length-1)).focus()};
+$('addGuest').onclick=()=>{S.guests.push({n:'',note:'',room:'',mode:'visit'});save();renderGuests();$('gn'+(S.guests.length-1)).focus()};
 renderRooms();renderGuests();
 
 /* ---------- Dessin de la carte ---------- */
@@ -327,19 +334,18 @@ function roomShape(r,R){
 }
 
 function geom(W,H,top,bottom){
- const pad=W*.07, gw=W-pad*2, gh=H-top-(bottom??pad*1.2), inset=14, cw=(gw-inset*2)/COLS, ch=(gh-inset*2)/ROWS, g=7;
+ const pad=W*.07, gw=W-pad*2, gh=H-top-(bottom??pad*1.2), inset=18, cw=(gw-inset*2)/COLS, ch=(gh-inset*2)/ROWS, g=12;
  const ox=pad+inset, oy=top+inset;
  const rooms=S.rooms.map((r,i)=>{const c=Math.min(r.c,COLS),rr=Math.min(r.r,ROWS);
   const w=Math.min(r.w,COLS-c+1),h=Math.min(r.h,ROWS-rr+1);
   const o={n:r.n,x:ox+(c-1)*cw+g,y:oy+(rr-1)*ch+g,w:w*cw-g*2,h:h*ch-g*2};
   o.shape=roomShape(o,rng(hash(r.n+'|'+i)));return o});
  const all={x:pad+inset,y:top+inset,w:gw-inset*2,h:gh-inset*2};
- const list=[...(S.me?[{n:S.me,note:'',room:''}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
- const cnt={},idx=list.map(p=>{const k=p.room||'';cnt[k]=(cnt[k]||0);return cnt[k]++});
- const walkers=list.map((p,i)=>{const b=rooms.find(r=>r.n===p.room)||all;
-  const n=cnt[p.room||''],rs=(hash(p.room||'*')%1000)/1000,ghost=b===all;
-  return{n:p.n,note:p.note,b,ghost,phase:idx[i]/n*Math.PI*2,sp:1,k:1+Math.round(rs*2)}});
- return{rooms,walkers,castle:{x:pad,y:top,w:gw,h:gh},top};
+ const list=[...(S.me?[{n:S.me,note:'',room:'',mode:S.meMode||'visit'}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
+ const walkers=list.map(p=>{const ri=S.rooms.findIndex(r=>r.n===p.room);let mode=p.mode||(p.room?'room':'ghost');
+  if(mode==='room'&&ri<0)mode='visit';
+  return{n:p.n,note:p.note,mode,ri:ri>=0?ri:null,ghost:mode==='ghost',b:all,phase:Math.random()*Math.PI*2,k:1+Math.floor(Math.random()*3)}});
+ const G={rooms,walkers,castle:{x:pad,y:top,w:gw,h:gh},top};G.nav=buildNav(G,W,H);return G;
 }
 
 /* Parchemin vieilli : grain, taches, plis */
@@ -360,10 +366,16 @@ function inkLayer(W,H,d,G){
  const c=document.createElement('canvas');c.width=W*d;c.height=H*d;const x=c.getContext('2d');x.scale(d,d);
  const K=G.castle,R=rng(hash(S.rooms.map(r=>r.n).join()));
  x.lineJoin='round';x.lineCap='round';
- // hachures de pierre
- x.save();x.beginPath();x.rect(K.x,K.y,K.w,K.h);x.clip();x.strokeStyle=INK+'.22)';x.lineWidth=.8;
- for(let i=-K.h;i<K.w;i+=7){x.beginPath();x.moveTo(K.x+i,K.y+K.h);x.lineTo(K.x+i+K.h,K.y);x.stroke()}
+ // couloirs : grandes dalles décalées
+ x.save();x.beginPath();x.rect(K.x,K.y,K.w,K.h);x.clip();x.fillStyle='rgba(225,200,150,.35)';x.fillRect(K.x,K.y,K.w,K.h);
+ x.strokeStyle=INK+'.13)';x.lineWidth=.7;
+ for(let yy=K.y,row=0;yy<K.y+K.h;yy+=13,row++){x.beginPath();x.moveTo(K.x,yy);x.lineTo(K.x+K.w,yy);x.stroke();
+  for(let xx=K.x-(row%2?9:0);xx<K.x+K.w;xx+=14+R()*10){x.beginPath();x.moveTo(xx,yy);x.lineTo(xx,yy+13);x.stroke()}}
  x.restore();
+ // épaisseur du rempart : bande hachurée
+ x.save();x.beginPath();x.rect(K.x,K.y,K.w,K.h);x.rect(K.x+9,K.y+9,K.w-18,K.h-18);x.clip('evenodd');x.strokeStyle=INK+'.3)';x.lineWidth=.8;
+ for(let i=-K.h;i<K.w;i+=6){x.beginPath();x.moveTo(K.x+i,K.y+K.h);x.lineTo(K.x+i+K.h,K.y);x.stroke()}
+ x.restore();x.strokeStyle=INK+'.55)';x.lineWidth=1;x.strokeRect(K.x+9,K.y+9,K.w-18,K.h-18);
  // créneaux
  x.fillStyle=INK+'.75)';const cr=9;
  for(let px=K.x+cr;px<K.x+K.w-cr;px+=cr*2){x.fillRect(px,K.y-5,cr,5);x.fillRect(px,K.y+K.h,cr,5)}
@@ -388,8 +400,8 @@ function inkLayer(W,H,d,G){
   path();x.strokeStyle=INK+'.88)';x.lineWidth=4.5;x.stroke();x.strokeStyle=PAPER;x.lineWidth=1.6;x.stroke();
   if(S_.tower){const t=S_.tower;x.beginPath();x.arc(t.c[0],t.c[1],t.r,0,7);x.strokeStyle=INK+'.88)';x.lineWidth=3;x.stroke();
    x.lineWidth=1;x.beginPath();x.arc(t.c[0],t.c[1],t.r*.55,0,7);x.stroke()}
-  S_.doors.forEach(dr=>{x.strokeStyle='rgba(236,217,172,1)';x.lineWidth=6;x.beginPath();x.moveTo(dr.x-dr.ux*6,dr.y-dr.uy*6);x.lineTo(dr.x+dr.ux*6,dr.y+dr.uy*6);x.stroke();
-   x.strokeStyle=INK+'.7)';x.lineWidth=1;x.beginPath();x.arc(dr.x-dr.ux*6,dr.y-dr.uy*6,12,Math.atan2(dr.uy,dr.ux),Math.atan2(dr.uy,dr.ux)+Math.PI/2);x.stroke()});
+  S_.doors.forEach(dr=>{x.strokeStyle='rgba(236,217,172,1)';x.lineCap='butt';x.lineWidth=7;x.beginPath();x.moveTo(dr.x-dr.ux*8,dr.y-dr.uy*8);x.lineTo(dr.x+dr.ux*8,dr.y+dr.uy*8);x.stroke();x.lineCap='round';
+   x.strokeStyle=INK+'.7)';x.lineWidth=1;x.beginPath();x.arc(dr.x-dr.ux*8,dr.y-dr.uy*8,15,Math.atan2(dr.uy,dr.ux),Math.atan2(dr.uy,dr.ux)+Math.PI/2);x.stroke()});
   if(S_.stairs){const sw=Math.min(28,r.w*.25),sx=r.x+r.w-sw-8,sy=r.y+r.h-sw-8;x.strokeStyle=INK+'.55)';x.lineWidth=1;
    x.strokeRect(sx,sy,sw,sw);for(let k=1;k<6;k++){x.beginPath();x.moveTo(sx,sy+sw*k/6);x.lineTo(sx+sw,sy+sw*k/6);x.stroke()}}
   x.fillStyle=INK+'.6)';x.textAlign='center';x.textBaseline='middle';
@@ -408,61 +420,169 @@ function inkReveal(ctx,layer,W,H,k){
   i?ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r):ctx.moveTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r)}
  ctx.closePath();ctx.clip();ctx.drawImage(layer,0,0,W,H);ctx.restore();
 }
-function pos(w,t){const b=w.b,a=w.phase+t*w.sp,mx=b.w*.36,my=b.h*.3;
- return[b.x+b.w/2+Math.cos(a)*mx,b.y+b.h/2+8+Math.sin(a*w.k)*my,a]}
-/* Humeur de chaque invité : marche, flâne, se presse, ou s'arrête (parfois plusieurs minutes) */
+/* ================= Déplacements des invités ================= */
 const rnd=(a,b)=>a+Math.random()*(b-a);
-function nextMood(w){const r=Math.random();
- if(r<.42){w.target=rnd(.85,1.1);w.until=w.clock+rnd(8e3,25e3)}          // marche
- else if(r<.56){w.target=rnd(1.3,1.55);w.until=w.clock+rnd(3e3,8e3)}     // se presse
- else if(r<.72){w.target=rnd(.4,.6);w.until=w.clock+rnd(6e3,16e3)}     // flâne
- else{w.target=0;w.until=w.clock+(Math.random()<.25?rnd(60e3,240e3):rnd(6e3,40e3))} // s'arrête
+const SPEED=.009,STRIDE=8,FADE_HOLD=900,FADE_OUT=3600,INK_IN=160;
+const lerpA=(a,b,t)=>{let d=((b-a+Math.PI*3)%(Math.PI*2))-Math.PI;return a+d*t};
+
+/* --- Grille de passage : murs bloquants, portes ouvertes, couloirs libres --- */
+function buildNav(G,W,H){
+ const C=3,cols=Math.ceil(W/C),rows=Math.ceil(H/C);
+ const cv=document.createElement('canvas');cv.width=cols;cv.height=rows;const x=cv.getContext('2d');x.scale(1/C,1/C);
+ x.fillStyle='#000';x.fillRect(0,0,W,H);
+ const K=G.castle;x.fillStyle='#fff';x.fillRect(K.x+15,K.y+15,K.w-30,K.h-30);
+ x.strokeStyle='#000';x.fillStyle='#000';x.lineJoin='round';x.lineWidth=12;
+ G.rooms.forEach(r=>{const s=r.shape;x.beginPath();s.pts.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.closePath();x.stroke();
+  if(s.tower){x.beginPath();x.arc(s.tower.c[0],s.tower.c[1],s.tower.r+6,0,7);x.fill()}});
+ x.fillStyle='#fff';
+ G.rooms.forEach(r=>r.shape.doors.forEach(d=>{x.save();x.translate(d.x,d.y);x.rotate(Math.atan2(d.uy,d.ux));x.fillRect(-8,-11,16,22);x.restore()}));
+ const img=x.getImageData(0,0,cols,rows).data,free=new Uint8Array(cols*rows);
+ for(let i=0;i<cols*rows;i++)free[i]=img[i*4]>200?1:0;
+ const pc=document.createElement('canvas').getContext('2d');
+ G.rooms.forEach(r=>{const p=new Path2D();r.shape.pts.forEach((q,i)=>i?p.lineTo(q[0],q[1]):p.moveTo(q[0],q[1]));p.closePath();r.p2d=p});
+ return{C,cols,rows,free,pc};
 }
-const SPEED=.008,STRIDE=8,N=7; // 8 px/s à allure normale, un pas tous les 8 px
+function isFree(nav,px,py){const c=Math.floor(px/nav.C),r=Math.floor(py/nav.C);return c>=0&&r>=0&&c<nav.cols&&r<nav.rows&&nav.free[r*nav.cols+c]===1}
+function roomy(nav,px,py,rad=6){for(let a=0;a<8;a++){const an=a*Math.PI/4;if(!isFree(nav,px+Math.cos(an)*rad,py+Math.sin(an)*rad))return false}return isFree(nav,px,py)}
+function los(nav,a,b){const d=Math.hypot(b.x-a.x,b.y-a.y),n=Math.ceil(d/1.5);for(let i=0;i<=n;i++){const t=i/n;if(!isFree(nav,a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t))return false}return true}
+function nearestFree(nav,c,r){if(c>=0&&r>=0&&c<nav.cols&&r<nav.rows&&nav.free[r*nav.cols+c])return[c,r];
+ for(let k=1;k<8;k++)for(let dy=-k;dy<=k;dy++)for(let dx=-k;dx<=k;dx++){const cc=c+dx,rr=r+dy;if(cc>=0&&rr>=0&&cc<nav.cols&&rr<nav.rows&&nav.free[rr*nav.cols+cc])return[cc,rr]}return null}
+/* A* sur la grille, puis chemin tendu et arrondi */
+function findPath(nav,from,to){
+ const{C,cols,rows,free}=nav,s=nearestFree(nav,Math.floor(from.x/C),Math.floor(from.y/C)),t=nearestFree(nav,Math.floor(to.x/C),Math.floor(to.y/C));
+ if(!s||!t)return null;
+ const S0=s[1]*cols+s[0],T=t[1]*cols+t[0],g=new Float32Array(cols*rows).fill(1e9),came=new Int32Array(cols*rows).fill(-1),closed=new Uint8Array(cols*rows);
+ const heap=[];const push=(i,f)=>{heap.push([f,i]);let k=heap.length-1;while(k){const p=(k-1)>>1;if(heap[p][0]<=heap[k][0])break;[heap[p],heap[k]]=[heap[k],heap[p]];k=p}};
+ const pop=()=>{const top=heap[0],last=heap.pop();if(heap.length){heap[0]=last;let k=0;for(;;){const l=2*k+1,r=l+1;let m=k;if(l<heap.length&&heap[l][0]<heap[m][0])m=l;if(r<heap.length&&heap[r][0]<heap[m][0])m=r;if(m===k)break;[heap[m],heap[k]]=[heap[k],heap[m]];k=m}}return top};
+ const h=i=>{const dx=Math.abs(i%cols-t[0]),dy=Math.abs((i/cols|0)-t[1]);return Math.max(dx,dy)+.414*Math.min(dx,dy)};
+ g[S0]=0;push(S0,h(S0));let found=false,guard=0;
+ while(heap.length&&guard++<60000){const[,i]=pop();if(closed[i])continue;if(i===T){found=true;break}closed[i]=1;
+  const cx=i%cols,cy=i/cols|0;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const nx=cx+dx,ny=cy+dy;if(nx<0||ny<0||nx>=cols||ny>=rows)continue;
+   const j=ny*cols+nx;if(!free[j]||closed[j])continue;if(dx&&dy&&(!free[cy*cols+nx]||!free[ny*cols+cx]))continue;
+   const ng=g[i]+(dx&&dy?1.414:1);if(ng<g[j]){g[j]=ng;came[j]=i;push(j,ng+h(j))}}}
+ if(!found)return null;
+ let raw=[];for(let i=T;i!==-1;i=came[i])raw.push({x:(i%cols+.5)*C,y:((i/cols|0)+.5)*C});raw.reverse();
+ raw[0]={x:from.x,y:from.y};raw.push({x:to.x,y:to.y});
+ const pulled=[raw[0]];let i=0;
+ while(i<raw.length-1){let j=raw.length-1;while(j>i+1&&!los(nav,raw[i],raw[j]))j--;pulled.push(raw[j]);i=j}
+ let sm=pulled;
+ for(let it=0;it<2&&sm.length>2;it++){const o=[sm[0]];for(let k=0;k<sm.length-1;k++){const a=sm[k],b=sm[k+1];
+  if(k>0)o.push({x:a.x*.75+b.x*.25,y:a.y*.75+b.y*.25});if(k<sm.length-2)o.push({x:a.x*.25+b.x*.75,y:a.y*.25+b.y*.75})}o.push(sm[sm.length-1]);sm=o}
+ for(let k=0;k<sm.length-1;k++)if(!los(nav,sm[k],sm[k+1]))return pulled; // arrondi qui frôlerait un mur : on garde le chemin droit
+ return sm;
+}
+/* Choisit un endroit où aller : sa pièce, une autre pièce ou un couloir */
+function pickSpot(G,w,walkers){
+ const nav=G.nav;let ri;
+ if(w.mode==='room')ri=w.ri;
+ else{const r=Math.random();ri=(w.ri!=null&&r<.5)?w.ri:(r<.82&&G.rooms.length?Math.floor(Math.random()*G.rooms.length):-1)}
+ const K=G.castle;
+ for(let tries=0;tries<250;tries++){
+  let px,py;
+  if(ri!=null&&ri>=0){const r=G.rooms[ri];px=r.x+Math.random()*r.w;py=r.y+Math.random()*r.h;if(!nav.pc.isPointInPath(r.p2d,px,py))continue}
+  else{px=K.x+Math.random()*K.w;py=K.y+Math.random()*K.h;if(G.rooms.some(r=>nav.pc.isPointInPath(r.p2d,px,py)))continue}
+  if(!roomy(nav,px,py,7))continue;
+  if(walkers.some(o=>o!==w&&!o.ghost&&o.x!=null&&Math.hypot((o.dest||o).x-px,(o.dest||o).y-py)<22))continue;
+  return{x:px,y:py};
+ }
+ return null;
+}
+
+/* --- Fantômes : trajectoire libre à travers les murs (ancien déplacement glissé) --- */
+function pos(w,t){const b=w.b,a=w.phase+t,mx=b.w*.36,my=b.h*.3;return[b.x+b.w/2+Math.cos(a)*mx,b.y+b.h/2+8+Math.sin(a*w.k)*my]}
 function here(w,u){const[x,y]=pos(w,u),[x2,y2]=pos(w,u+.001);return{x,y,ang:Math.atan2(y2-y,x2-x),dpu:Math.hypot(x2-x,y2-y)/.001}}
-function stepWalkers(walkers,ts){
- walkers.forEach(w=>{
-  if(w.u==null){w.u=Math.random()*Math.PI*2;w.base=rnd(.7,1.15);w.cm=1;w.clock=0;w.lastTs=ts;w.stepAt=ts;w.dist=0;w.next=STRIDE;w.prints=[];w.n0=0;nextMood(w)}
-  const dt=Math.min(100,ts-w.lastTs);w.lastTs=ts;w.clock+=dt;
-  if(w.clock>w.until)nextMood(w);
-  w.cm+=(w.target-w.cm)*Math.min(1,dt/700);
-  if(w.target===0&&w.cm<.04)w.cm=0;
-  const v=SPEED*w.base*w.cm*dt,h=here(w,w.u);
-  w.u+=v/Math.max(.001,h.dpu);w.dist+=v;                          // avance à vitesse réelle constante
-  while(w.dist>=w.next){const p=here(w,w.u);w.prints.push({x:p.x,y:p.y,ang:p.ang,side:(w.n0++%2?1:-1)});
-   if(w.prints.length>N)w.prints.shift();w.next+=STRIDE;w.stepAt=ts}
- });
+function ghostMood(w){const r=Math.random();
+ if(r<.5){w.target=rnd(.85,1.1);w.until=w.clock+rnd(8e3,25e3)}else if(r<.65){w.target=rnd(1.3,1.55);w.until=w.clock+rnd(3e3,8e3)}
+ else if(r<.8){w.target=rnd(.4,.6);w.until=w.clock+rnd(6e3,16e3)}else{w.target=0;w.until=w.clock+(Math.random()<.25?rnd(60e3,240e3):rnd(6e3,40e3))}}
+
+/* --- Humeurs des marcheurs : allure qui varie, petites pauses en route --- */
+function walkMood(w,ts){const r=Math.random();
+ if(r<.55){w.target=rnd(.85,1.1);w.until=ts+rnd(8e3,22e3)}
+ else if(r<.72){w.target=rnd(1.3,1.55);w.until=ts+rnd(3e3,7e3)}
+ else if(r<.9){w.target=rnd(.4,.6);w.until=ts+rnd(5e3,14e3)}
+ else{w.target=w.cm||1;w.until=ts+rnd(6e3,15e3);if(w.state==='walk')stand(w,ts,rnd(3e3,10e3))}}
+function stopTime(){return Math.random()<.25?rnd(60e3,240e3):rnd(5e3,35e3)}
+
+/* --- Empreintes --- */
+function addPrint(w,ts,x,y,ang,side,delay=0){const p={x,y,ang:ang+rnd(-.09,.09),side,t:ts+delay,ink:rnd(.78,1),off:rnd(3.1,4)};w.prints.push(p);
+ const old=w.prints[w.prints.length-3];if(old&&!old.free)old.free=ts+delay; // un pas pâlit seulement quand deux pas plus récents sont posés
+ return p}
+function stand(w,ts,dur){if(w.state==='stand')return;w.state='stand';w.standUntil=ts+dur;
+ const last=w.prints[w.prints.length-1];
+ if(last&&Math.hypot(last.x-w.x,last.y-w.y)<14){w.stand=[last,addPrint(w,ts,last.x,last.y,last.ang,-last.side,260)];w.stand[1].ang=last.ang}
+ else{const a=w.hd||0;w.stand=[addPrint(w,ts,w.x,w.y,a,-1),addPrint(w,ts,w.x,w.y,a,1,120)]}}
+function unstand(w,ts){w.stand=null;w.state='walk';w.next=w.dist+STRIDE*.6}
+
+function initWalker(G,w,ts,walkers){
+ w.base=rnd(.75,1.15);w.cm=1;w.target=1;w.prints=[];w.dist=0;w.next=STRIDE;w.n0=Math.random()<.5?0:1;w.oy=0;
+ if(w.ghost){w.u=Math.random()*Math.PI*2;w.clock=0;ghostMood(w);return}
+ const sp=pickSpot(G,w,walkers)||{x:G.castle.x+G.castle.w/2,y:G.castle.y+G.castle.h/2};
+ w.x=sp.x;w.y=sp.y;w.hd=Math.random()*Math.PI*2;w.state='walk';w.path=null;
+ stand(w,ts,rnd(500,6000));w.stand.forEach(p=>p.t=ts-INK_IN-Math.random()*200);
+ w.until=ts+rnd(5e3,15e3);
 }
-function drawFoot(ctx,p,side,a){
- ctx.save();ctx.translate(p.x+Math.cos(p.ang+Math.PI/2)*side*3.6,p.y+Math.sin(p.ang+Math.PI/2)*side*3.6);ctx.rotate(p.ang+Math.PI/2);
+
+function updateWalker(G,w,ts,dt,walkers){
+ if(w.ghost){w.clock+=dt;if(w.clock>w.until)ghostMood(w);w.cm+=(w.target-w.cm)*Math.min(1,dt/700);if(w.target===0&&w.cm<.04)w.cm=0;
+  const h=here(w,w.u),v=SPEED*w.base*w.cm*dt;w.u+=v/Math.max(.001,h.dpu);return}
+ if(ts>w.until)walkMood(w,ts);
+ if(w.state==='stand'){
+  if(ts<w.standUntil)return;
+  if(!w.path||w.pi>=w.path.length){const d=pickSpot(G,w,walkers);const p=d&&findPath(G.nav,{x:w.x,y:w.y},d);
+   if(!p){w.standUntil=ts+2000;return}w.path=p;w.pi=1;w.dest=d}
+  unstand(w,ts);
+ }
+ w.cm+=(w.target-w.cm)*Math.min(1,dt/700);
+ let v=SPEED*w.base*Math.max(.3,w.cm)*dt,moved=0;
+ while(v>0&&w.pi<w.path.length){const t=w.path[w.pi],dx=t.x-w.x,dy=t.y-w.y,d=Math.hypot(dx,dy);
+  if(d<=v){w.x=t.x;w.y=t.y;v-=d;moved+=d;w.pi++}else{w.x+=dx/d*v;w.y+=dy/d*v;moved+=v;v=0}
+  if(d>.01)w.hd=lerpA(w.hd,Math.atan2(dy,dx),Math.min(1,dt/260))}
+ w.dist+=moved;
+ while(w.dist>=w.next){addPrint(w,ts,w.x,w.y,w.hd,(w.n0++%2)?1:-1);w.next+=STRIDE*rnd(.9,1.1)}
+ if(w.pi>=w.path.length){w.path=null;w.dest=null;stand(w,ts,stopTime())}
+}
+
+function printAlpha(w,p,ts){const age=ts-p.t;if(age<0)return 0;const inA=Math.min(1,age/INK_IN);
+ if(!p.free)return .9*p.ink*inA;
+ const ref=Math.max(p.t+INK_IN,p.free)+FADE_HOLD;
+ return .9*p.ink*inA*Math.max(0,1-Math.max(0,ts-ref)/FADE_OUT)}
+function drawFoot(ctx,p,a,ts){if(a<=0)return;const s=.72+.28*Math.min(1,(ts-p.t)/INK_IN),n=p.ang+Math.PI/2;
+ ctx.save();ctx.translate(p.x+Math.cos(n)*p.side*p.off,p.y+Math.sin(n)*p.side*p.off);ctx.rotate(n);ctx.scale(s,s);
  ctx.globalAlpha=a;ctx.beginPath();ctx.ellipse(0,-.8,2.2,3.2,0,0,7);ctx.fill();ctx.beginPath();ctx.ellipse(0,3.6,1.6,1.4,0,0,7);ctx.fill();ctx.restore()}
-function label(ctx,w,x,y,a,an){ctx.globalAlpha=a;ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,x,y-14);
- if(w.note){ctx.globalAlpha=an;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,x,y-27)}ctx.globalAlpha=1}
-function drawWalkers(ctx,walkers,ts,alpha){
- stepWalkers(walkers,ts);
- ctx.fillStyle='rgba(59,36,18,.9)';
+
+function drawWalkers(ctx,walkers,ts,alpha,G){
+ walkers.forEach(w=>{if(w.base==null){initWalker(G,w,ts,walkers);w.lastTs=ts}});
+ walkers.forEach(w=>{const dt=Math.min(100,ts-w.lastTs);w.lastTs=ts;updateWalker(G,w,ts,dt,walkers)});
+ ctx.fillStyle='rgba(59,36,18,.9)';ctx.textAlign='center';ctx.textBaseline='middle';
+ const labels=[];
  walkers.forEach(w=>{
-  const h=here(w,w.u);
-  if(w.ghost){ /* Fantôme : glisse à travers les murs, empreintes pâles et continues */
-   const du=7/Math.max(.001,h.dpu);
-   for(let j=0;j<6;j++){const q=here(w,w.u-j*du);ctx.save();ctx.translate(q.x+Math.cos(q.ang+Math.PI/2)*(j%2?4:-4),q.y+Math.sin(q.ang+Math.PI/2)*(j%2?4:-4));
-    ctx.rotate(q.ang+Math.PI/2);ctx.globalAlpha=(1-j/6)*.5*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
-   label(ctx,w,h.x,h.y,.6*alpha,.4*alpha);return}
-  /* Vrais pas : chaque pied posé reste en place, la traîne pâlit, à l'arrêt les deux pieds se rejoignent */
-  const still=ts-w.stepAt,fr=Math.min(.999,(w.dist-(w.next-STRIDE))/STRIDE),k=w.prints.length;
-  const trail=Math.exp(-Math.max(0,still-1500)/4000);
-  w.prints.forEach((p,i)=>{const j=k-1-i;let a=Math.max(0,1-(j+fr)/N)*.9;
-   if(j===0)a*=Math.min(1,still/150);if(j>=2)a*=trail;drawFoot(ctx,p,p.side,a*alpha)});
-  const last=w.prints[k-1];
-  if(last&&still>900)drawFoot(ctx,last,-last.side,Math.min(1,(still-900)/600)*.9*alpha);
-  const at=last||h;label(ctx,w,at.x,at.y,alpha,.65*alpha);
+  if(w.ghost){const h=here(w,w.u),du=7/Math.max(.001,h.dpu);
+   for(let j=0;j<6;j++){const q=here(w,w.u-j*du),n=q.ang+Math.PI/2,sd=j%2?4:-4;ctx.save();ctx.translate(q.x+Math.cos(n)*sd,q.y+Math.sin(n)*sd);
+    ctx.rotate(n);ctx.globalAlpha=(1-j/6)*.5*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
+   labels.push({w,x:h.x,y:h.y,a:.6,an:.4});return}
+  w.prints=w.prints.filter(p=>!p.free||printAlpha(w,p,ts)>0||ts<p.t+INK_IN);
+  w.prints.forEach(p=>drawFoot(ctx,p,printAlpha(w,p,ts)*alpha,ts));
+  if(w.lx==null){w.lx=w.x;w.ly=w.y}
+  const k=Math.min(1,(ts-(w.lt||ts))/140);w.lt=ts;w.lx+=(w.x-w.lx)*k;w.ly+=(w.y-w.ly)*k;
+  labels.push({w,x:w.lx+Math.cos(w.hd)*4,y:w.ly+Math.sin(w.hd)*4,a:1,an:.65});
  });
+ /* Les noms ne se chevauchent pas : on décale doucement ceux qui se croisent */
+ ctx.font='italic 13px "IM Fell English",Georgia,serif';
+ labels.sort((a,b)=>a.y-b.y);const placed=[];
+ labels.forEach(L=>{const wd=ctx.measureText(L.w.n).width+6;let oy=0;
+  for(let k=0;k<4;k++){const y=L.y-14+oy;if(!placed.some(P=>Math.abs(P.x-L.x)<(P.wd+wd)/2&&Math.abs(P.y-y)<13))break;oy-=13}
+  L.w.oy+=(oy-L.w.oy)*.12;const y=L.y-14+L.w.oy;placed.push({x:L.x,y,wd});
+  ctx.globalAlpha=L.a*alpha;ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(L.w.n,L.x,y);
+  if(L.w.note){ctx.globalAlpha=L.an*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(L.w.note,L.x,y-13)}});
+ ctx.globalAlpha=1;
 }
+
 function fit(c){const d=devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;c.width=W*d;c.height=H*d;const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return[x,W,H]}
 let pRaf;
 function drawPreview(){cancelAnimationFrame(pRaf);const c=$('preview');if(!c.clientWidth)return;
  const[ctx,W,H]=fit(c);const d=devicePixelRatio||1,G=geom(W,H,H*.06),P=paperLayer(W,H,d),I=inkLayer(W,H,d,G);
- const loop=ts=>{ctx.clearRect(0,0,W,H);ctx.drawImage(P,0,0,W,H);ctx.drawImage(I,0,0,W,H);ctx.fillStyle=INK+'.9)';ctx.textAlign='center';ctx.textBaseline='middle';drawWalkers(ctx,G.walkers,ts,1);pRaf=requestAnimationFrame(loop)};pRaf=requestAnimationFrame(loop)}
+ const loop=ts=>{ctx.clearRect(0,0,W,H);ctx.drawImage(P,0,0,W,H);ctx.drawImage(I,0,0,W,H);ctx.fillStyle=INK+'.9)';ctx.textAlign='center';ctx.textBaseline='middle';drawWalkers(ctx,G.walkers,ts,1,G);pRaf=requestAnimationFrame(loop)};pRaf=requestAnimationFrame(loop)}
 addEventListener('resize',()=>{if(!$('setup').hidden)drawPreview()});
 document.fonts&&document.fonts.ready.then(drawPreview);drawPreview();
 
@@ -534,7 +654,7 @@ function frame(ts){const e=ts-t0;ctx.clearRect(0,0,W,H);
  /* l'encre attend que le titre commence, puis se répand lentement (≈8 s) */
  const k=Math.max(0,Math.min(1,(e-2600)/8000)),ke=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;inkReveal(ctx,INKL,W,H,ke);
  ctx.fillStyle=INK+'.9)';ctx.textAlign='center';ctx.textBaseline='middle';
- if(e>10000)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-10000)/2000));
+ if(e>10000)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-10000)/2000),G);
  raf=requestAnimationFrame(frame)}
 let isMapOpen=false,inkOut=0,lit=false,tauntOpen=false;
 function openTaunt(){if(tauntOpen)return;tauntOpen=true;

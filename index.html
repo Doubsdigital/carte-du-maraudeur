@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 12 -->
+<!-- version 13 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -516,24 +516,51 @@ function vibro(){if(!navigator.vibrate)return;unvibro();
  navigator.vibrate(p);stage.classList.add('shake');
  vibroT=setTimeout(unvibro,p.reduce((a,b)=>a+b,0))}
 function unvibro(){clearTimeout(vibroT);navigator.vibrate&&navigator.vibrate(0);stage.classList.remove('shake')}
-let torchTrack=null;
-async function torchOn(){
- const st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'}}});
+let torchTrack=null,torchVid=null,torchLog=[];
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+/* Ouvre une caméra, lance réellement le flux (Samsung n'expose la lampe qu'après), et vérifie qu'elle a une LED */
+async function probe(video,label){
+ let st;try{st=await navigator.mediaDevices.getUserMedia({audio:false,video})}catch(e){torchLog.push(label+' : '+e.name);if(e.name==='NotAllowedError')throw e;return null}
  const tr=st.getVideoTracks()[0];
- let caps=tr.getCapabilities?tr.getCapabilities():{};
- if(!('torch' in caps)){await new Promise(r=>setTimeout(r,400));caps=tr.getCapabilities?tr.getCapabilities():{}}
- if(!caps.torch){tr.stop();throw new Error('no-torch')}
- await tr.applyConstraints({advanced:[{torch:true}]});torchTrack=tr;
+ const v=document.createElement('video');v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');
+ v.style.cssText='position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0';
+ document.body.appendChild(v);v.srcObject=st;try{await v.play()}catch(e){}
+ let ok=false;
+ for(let i=0;i<6&&!ok;i++){const c=tr.getCapabilities?tr.getCapabilities():{};if(c.torch)ok=true;else await wait(150)}
+ if(!ok&&window.ImageCapture){try{const pc=await new ImageCapture(tr).getPhotoCapabilities();if((pc.fillLightMode||[]).includes('flash'))ok=true}catch(e){}}
+ torchLog.push((tr.label||label)+(ok?' : LED ✓':' : pas de LED'));
+ if(ok){torchVid=v;return tr}
+ tr.stop();v.remove();return null;
 }
-function torchOff(){if(!torchTrack)return;try{torchTrack.applyConstraints({advanced:[{torch:false}]})}catch(e){}torchTrack.stop();torchTrack=null}
+async function lightTrack(tr){
+ try{await tr.applyConstraints({advanced:[{torch:true}]})}catch(e){}
+ const s=tr.getSettings?tr.getSettings():{};
+ if(s.torch!==true){try{await tr.applyConstraints({torch:true})}catch(e){}}
+}
+async function torchOn(){
+ torchLog=[];let tr=null,saved=null;
+ try{saved=localStorage.getItem('maraudeur-cam')}catch(e){}
+ if(saved)tr=await probe({deviceId:{exact:saved}},'caméra mémorisée');
+ if(!tr)tr=await probe({facingMode:{exact:'environment'}},'caméra arrière');
+ if(!tr){
+  const devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'&&!/front|avant|user/i.test(d.label));
+  for(const d of devs){if(d.deviceId===saved)continue;tr=await probe({deviceId:{exact:d.deviceId}},d.label||'caméra');if(tr)break}
+ }
+ if(!tr)throw new Error('no-torch');
+ try{localStorage.setItem('maraudeur-cam',tr.getSettings().deviceId||'')}catch(e){}
+ await lightTrack(tr);torchTrack=tr;
+}
+function torchOff(){if(torchTrack){try{torchTrack.applyConstraints({advanced:[{torch:false}]})}catch(e){}torchTrack.stop();torchTrack=null}
+ if(torchVid){torchVid.srcObject=null;torchVid.remove();torchVid=null}}
 async function lumos(){if(lit)return;lit=true;navigator.vibrate&&navigator.vibrate(20);
  if(S.lumode==='torch'){try{await torchOn();if(!lit)torchOff();return}catch(e){}}
  if(lit)stage.classList.add('lit')}
 function nox(){if(!lit)return;lit=false;torchOff();stage.classList.remove('lit')}
 $('testTorch').onclick=async()=>{const m=$('torchMsg');
  if(torchTrack){torchOff();$('testTorch').textContent='Tester';m.textContent='Lampe éteinte.';return}
- try{await torchOn();$('testTorch').textContent='Éteindre';m.textContent='✓ La lampe fonctionne. Lumos l\'allumera pendant le tour.'}
- catch(e){m.textContent=e.message==='no-torch'?'Ce navigateur ne peut pas piloter la LED : Lumos passera l\'écran en blanc.':'Accès à la caméra refusé. Autorise-le dans les réglages du site, sinon Lumos passera l\'écran en blanc.'}};
+ m.textContent='Recherche de la lampe…';
+ try{await torchOn();$('testTorch').textContent='Éteindre';m.textContent='✓ La lampe fonctionne. Lumos l\'allumera pendant le tour. ('+torchLog.join(' · ')+')'}
+ catch(e){m.textContent=(e.name==='NotAllowedError'?'Accès à la caméra refusé : autorise-le dans les réglages du site (cadenas → Autorisations → Caméra).':'Aucune LED trouvée : Lumos passera l\'écran en blanc.')+' Détail : '+(torchLog.join(' · ')||e.name||e.message)}};
 function openMap(){if(isMapOpen||Date.now()<coolUntil)return;isMapOpen=true;coolUntil=Date.now()+2500;
  inkOut=0;stage.classList.add('open');sizeStage();
  t0=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);

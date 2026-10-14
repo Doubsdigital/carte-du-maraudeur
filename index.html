@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 23 -->
+<!-- version 24 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -632,7 +632,7 @@ function drawWalkers(ctx,walkers,ts,alpha,G){
   labels.push({w,x:w.lx,y:w.ly,a:1,an:.75});
  });
  /* Noms dans un bandeau de parchemin : un côté stable, changement en fondu seulement si le chevauchement dure */
- const FN='italic 11px "IM Fell English",Georgia,serif',FS='italic 9px "IM Fell English",Georgia,serif',SIDES=['below','above','right','left'];
+ const XF=1800,FN='italic 11px "IM Fell English",Georgia,serif',FS='italic 9px "IM Fell English",Georgia,serif',SIDES=['below','above','right','left'];
  const box=(L,side)=>{const w=L.bw,h=L.bh;let cx=L.x,cy=L.y;
   if(side==='below')cy+=10+h/2;else if(side==='above')cy-=12+h/2;else if(side==='right')cx+=9+w/2;else cx-=9+w/2;
   return{x:cx-w/2,y:cy-h/2,w,h,cx,cy}};
@@ -642,20 +642,24 @@ function drawWalkers(ctx,walkers,ts,alpha,G){
   w.noteA=(w.noteA??1)+(((w.note&&crowd<2)?1:0)-(w.noteA??1))*.08;     // notes masquées dans les groupes
   ctx.font=FN;let bw=ctx.measureText(w.n).width;if(w.note&&w.noteA>.05){ctx.font=FS;bw=Math.max(bw,ctx.measureText(w.note).width*w.noteA)}
   L.bw=bw+16;L.bh=13+(w.note?10*w.noteA:0);
-  if(!w.lab)w.lab={side:'below',since:-1e9,hit:null,fade:1,next:null};});
+  if(!w.lab)w.lab={side:'below',since:-1e9,hit:null,prev:null};});
  labels.forEach(L=>{L.r=box(L,L.w.lab.side)});
  const others=(L,r)=>labels.reduce((s,o)=>o===L?s:s+ov(r,o.r)+(Math.hypot(o.x-(r.x+r.w/2),o.y-(r.y+r.h/2))<8?40:0),0);
  labels.forEach(L=>{const lb=L.w.lab;
-  if(lb.next){const k=(ts-lb.t0)/280;if(k>=1&&lb.fade>0){lb.side=lb.next;lb.since=ts}
-   lb.fade=k<1?1-k:Math.min(1,k-1);if(k>=2){lb.next=null;lb.fade=1}L.r=box(L,lb.side);return}
+  if(lb.prev&&ts-lb.t0>XF)lb.prev=null;
+  if(lb.prev)return;
   if(others(L,L.r)>20){lb.hit=lb.hit??ts;
    if(ts-lb.hit>1000&&ts-lb.since>5000){let best=lb.side,bs=others(L,L.r)*.9;
     SIDES.forEach(sd=>{const v=others(L,box(L,sd))+(sd==='below'?0:3);if(v<bs){bs=v;best=sd}});
-    if(best!==lb.side){lb.next=best;lb.t0=ts}lb.hit=null}}
+    if(best!==lb.side){lb.prev=lb.side;lb.side=best;lb.t0=ts;lb.since=ts;L.r=box(L,best)}lb.hit=null}}
   else lb.hit=null;});
- labels.forEach(L=>{const w=L.w,lb=w.lab,r=L.r,a=L.a*alpha*lb.fade;if(a<=.01)return;
+ labels.forEach(L=>{const w=L.w,lb=w.lab;
+  if(lb.prev){const k=Math.min(1,(ts-lb.t0)/XF),e=k*k*k*(k*(k*6-15)+10); // fondu enchaîné très doux
+   drawLab(L,box(L,lb.prev),lb.prev,L.a*alpha*(1-e));drawLab(L,L.r,lb.side,L.a*alpha*e)}
+  else drawLab(L,L.r,lb.side,L.a*alpha)});
+ function drawLab(L,r,side,a){const w=L.w;if(a<=.01)return;
   // trait d'encre vers la personne quand le bandeau n'est pas juste dessous
-  if(lb.side!=='below'){ctx.globalAlpha=a*.35;ctx.strokeStyle=INK+'1)';ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(L.x,L.y);
+  if(side!=='below'){ctx.globalAlpha=a*.35;ctx.strokeStyle=INK+'1)';ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(L.x,L.y);
    ctx.lineTo(Math.max(r.x,Math.min(r.x+r.w,L.x)),Math.max(r.y,Math.min(r.y+r.h,L.y)));ctx.stroke()}
   // bandeau à bouts fourchus
   const n=5;ctx.globalAlpha=a*.92;ctx.fillStyle='rgba(242,229,195,1)';ctx.beginPath();
@@ -663,7 +667,7 @@ function drawWalkers(ctx,walkers,ts,alpha,G){
   ctx.lineTo(r.x-n,r.y+r.h);ctx.lineTo(r.x-n*.2,r.y+r.h/2);ctx.closePath();ctx.fill();
   ctx.globalAlpha=a*.6;ctx.strokeStyle=INK+'1)';ctx.lineWidth=.8;ctx.stroke();
   ctx.fillStyle='rgba(59,36,18,1)';ctx.globalAlpha=a;ctx.font=FN;ctx.fillText(w.n,r.cx,r.y+7);
-  if(w.note&&w.noteA>.05){ctx.globalAlpha=a*L.an*w.noteA;ctx.font=FS;ctx.fillText(w.note,r.cx,r.y+16.5)}});
+  if(w.note&&w.noteA>.05){ctx.globalAlpha=a*L.an*w.noteA;ctx.font=FS;ctx.fillText(w.note,r.cx,r.y+16.5)}}
  ctx.fillStyle='rgba(59,36,18,.9)';ctx.globalAlpha=1;
 }
 

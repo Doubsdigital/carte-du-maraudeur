@@ -98,6 +98,9 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 #taunt p:nth-child(4){text-align:right;font-size:clamp(17px,5vw,22px)}
 #lumos{position:absolute;inset:0;z-index:4;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s ease}
 #stage.lit #lumos{opacity:1;pointer-events:auto}
+#stage.shake #lock,#stage.shake #map,#stage.shake #taunt{animation:shake .09s linear infinite}
+@keyframes shake{0%{transform:translate(0,0)}25%{transform:translate(1.5px,-1px)}50%{transform:translate(-1px,1.5px)}75%{transform:translate(-1.5px,-1px)}}
+@media (prefers-reduced-motion:reduce){#stage.shake #lock,#stage.shake #map,#stage.shake #taunt{animation:none}}
 #exit{position:absolute;z-index:5;top:0;left:0;width:90px;height:90px}
 @media (prefers-reduced-motion:reduce){#map,#lock,.reveal span{transition:none}}
 </style>
@@ -179,6 +182,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
     <li>« Méfait accompli » efface l'encre et le parchemin redevient vierge.</li>
     <li>« Lumos » à tout moment allume la lampe torche, ou l'écran en blanc selon ton réglage. « Nox » l'éteint.</li>
     <li>« Révèle tous tes secrets » : la carte répond par ses quatre messages. « Méfait accompli » efface tout.</li>
+    <li>« Vibromassorum » fait vibrer le téléphone de plus en plus fort pendant une dizaine de secondes. « Finite Incantatem » l'arrête net.</li>
     <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer, double appui sur l'écran blanc pour Nox ou sur les messages pour les effacer.</li>
     <li>Pour revenir ici : trois appuis rapides dans le coin en haut à gauche.</li>
    </ol>
@@ -338,6 +342,8 @@ const isOpen=t=>/jur/.test(t)&&/(solenn|solen|intention|mauvais)/.test(t);
 const isLumos=t=>/\b(lumos|lumo|lumose|lumosse|loumos|lu mos|lou mos)\b/.test(t);
 const isNox=t=>/\b(nox|knox|noks|nocs|noxe|nokse)\b/.test(t);
 const isReveal=t=>/revel/.test(t)&&/secret/.test(t);
+const isVibro=t=>/vibro|vibra mass|vibre o mass/.test(t);
+const isFinite=t=>/finit|incantat/.test(t);
 const isClose=t=>/(mefait|me fait|meffet|accompli)/.test(t);
 let rec=null,mode=null,wantOn=false,coolUntil=0,onHeard=null;
 function micStart(m,handler){
@@ -364,7 +370,9 @@ function setListening(on,msg){
 $('testMic').onclick=()=>{
  if(wantOn&&mode==='test'){micStop();$('testMic').textContent='Tester le micro';return}
  if(!micStart('test',(t,raw)=>{$('heard').textContent=raw;
-   if(isLumos(t))$('vstate').textContent='✓ « Lumos » reconnu';
+   if(isVibro(t)){$('vstate').textContent='✓ « Vibromassorum » reconnu';vibro()}
+   else if(isFinite(t)){$('vstate').textContent='✓ « Finite Incantatem » reconnu';unvibro()}
+   else if(isLumos(t))$('vstate').textContent='✓ « Lumos » reconnu';
    else if(isNox(t))$('vstate').textContent='✓ « Nox » reconnu';
    else if(isReveal(t))$('vstate').textContent='✓ « Révèle tous tes secrets » reconnu';
    else if(isOpen(t))$('vstate').textContent='✓ Phrase d\'ouverture reconnue';
@@ -400,6 +408,14 @@ function openTaunt(){if(tauntOpen)return;tauntOpen=true;
 function closeTaunt(){if(!tauntOpen)return;tauntOpen=false;
  document.querySelectorAll('#taunt .reveal span').forEach(s=>s.classList.remove('on'));
  setTimeout(()=>stage.classList.remove('taunt'),700)}
+/* Vibromassorum : crescendo puis tremblement, ~10 s ou jusqu'à Finite Incantatem */
+let vibroT=null;
+function vibro(){if(!navigator.vibrate)return;unvibro();
+ const p=[150,120,150,120,250,100,250,100,400,80,400,80,600,60,800,60];
+ for(let i=0;i<14;i++)p.push(90,40);p.push(1500,80,2000);
+ navigator.vibrate(p);stage.classList.add('shake');
+ vibroT=setTimeout(unvibro,p.reduce((a,b)=>a+b,0))}
+function unvibro(){clearTimeout(vibroT);navigator.vibrate&&navigator.vibrate(0);stage.classList.remove('shake')}
 let torchTrack=null;
 async function torchOn(){
  const st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'}}});
@@ -441,6 +457,8 @@ $('go').onclick=async()=>{
  await goFull();getWake();
  prepAll();$('setup').hidden=true;stage.hidden=false;isMapOpen=false;stage.classList.remove('open');unwrite();tick();
  micStart('show',t=>{
+  if(isVibro(t)){vibro();micReset();return}
+  if(isFinite(t)){unvibro();micReset();return}
   if(lit){if(isNox(t)){nox();micReset()}return}
   if(isLumos(t)){lumos();micReset();return}
   if(!tauntOpen&&isReveal(t)){openTaunt();micReset();return}
@@ -460,7 +478,7 @@ $('lumos').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastLit<3
 /* Sortie : 3 appuis en haut à gauche */
 let taps=[];
 $('exit').addEventListener('pointerdown',e=>{e.stopPropagation();const n=Date.now();taps=taps.filter(t=>n-t<1500);taps.push(n);
- if(taps.length>=3){taps=[];nox();tauntOpen=true;closeTaunt();micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
+ if(taps.length>=3){taps=[];nox();unvibro();tauntOpen=true;closeTaunt();micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
   try{wake&&wake.release()}catch(e){};drawPreview()}});
 addEventListener('resize',()=>{if(isMapOpen)sizeStage()});
 

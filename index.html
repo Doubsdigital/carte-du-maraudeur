@@ -79,6 +79,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 #cv{position:absolute;inset:0;width:100%;height:100%}
 .words{position:relative;z-index:2;text-align:center;color:var(--ink);font-family:var(--body);max-width:22ch}
 .words h1{font-family:var(--display);font-weight:400;font-size:clamp(22px,6.6vw,32px);line-height:1.15;margin:0 0 8px;text-wrap:balance}
+.words .sub{font-family:var(--display);font-style:normal;font-size:13px;letter-spacing:.08em;margin:0 0 8px}
 .words p{font-style:italic;font-size:16px;margin:0;color:var(--ink-soft)}
 .reveal span{opacity:0;transition:opacity .5s}
 .reveal span.on{opacity:1}
@@ -102,6 +103,14 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
   <section>
    <h2>Ton nom sur la carte</h2>
    <input type="text" id="me" placeholder="Ex. Coco">
+  </section>
+
+  <section>
+   <h2>Inscription de la carte</h2>
+   <p class="hint">Ce que l'encre fait apparaître en haut du parchemin.</p>
+   <input type="text" id="insc0" placeholder="Auteurs">
+   <input type="text" id="insc1" placeholder="Titre">
+   <input type="text" id="insc2" placeholder="Sous-titre (facultatif)">
   </section>
 
   <section>
@@ -136,8 +145,8 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
    <h2>Pendant le tour</h2>
    <ol class="steps">
     <li>Les deux-points de l'heure clignotent quand l'app t'écoute.</li>
-    <li>« Je jure solennellement que mes intentions sont mauvaises » ouvre la carte.</li>
-    <li>« Méfait accompli » la referme.</li>
+    <li>« Je jure solennellement que mes intentions sont mauvaises » fait apparaître la carte.</li>
+    <li>« Méfait accompli » efface l'encre et le parchemin redevient vierge.</li>
     <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer.</li>
     <li>Pour revenir ici : trois appuis rapides dans le coin en haut à gauche.</li>
    </ol>
@@ -158,10 +167,10 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
  <div id="map">
   <canvas id="cv"></canvas>
   <div class="words">
-   <h1 class="reveal" id="t1">Je jure solennellement que mes intentions sont mauvaises</h1>
-   <p class="reveal" id="t2">Le parchemin révèle ses secrets…</p>
+   <p class="reveal sub" id="t0"></p>
+   <h1 class="reveal" id="t1"></h1>
+   <p class="reveal" id="t2"></p>
   </div>
-  <div id="bye">Méfait accompli</div>
  </div>
  <div id="exit"></div>
 </div>
@@ -188,8 +197,10 @@ const EXAMPLE={me:'',
   {n:'Invité 3',note:'',room:'Cuisine'}
  ]};
 let S;
+const INSC=['Lunard · Queudver · Patmol · Cornedrue','La Carte du Maraudeur','Ici se trouvent tous ceux qui hantent ces lieux'];
 try{S=JSON.parse(localStorage.getItem(KEY))||null}catch(e){S=null}
 if(!S)S=JSON.parse(JSON.stringify(EXAMPLE));
+if(!S.insc)S.insc=INSC.slice();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
 /* ---------- Éditeur ---------- */
@@ -217,6 +228,7 @@ function renderGuests(){
   </div>`).join('');
 }
 $('me').value=S.me||'';
+[0,1,2].forEach(i=>{const el=$('insc'+i);el.value=S.insc[i]||'';el.oninput=()=>{S.insc[i]=el.value;save()}});
 $('me').oninput=e=>{S.me=e.target.value;save();drawPreview()};
 $('rooms').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null)return;
  const old=S.rooms[i].n;S.rooms[i][t.dataset.k]=t.dataset.k==='n'?t.value:+t.value;
@@ -316,7 +328,8 @@ $('testMic').onclick=()=>{
 /* ---------- Scène ---------- */
 const stage=$('stage'),cv=$('cv');let ctx,W,H,G,raf,t0=0;
 function prep(el){el.innerHTML=el.textContent.trim().split(/\s+/).map(w=>`<span>${w}</span>`).join(' ')}
-prep($('t1'));prep($('t2'));
+function prepAll(){['t0','t1','t2'].forEach((id,i)=>{const el=$(id);el.textContent=(S.insc[i]||'').trim();el.hidden=!el.textContent;prep(el)})}
+prepAll();
 function write(el,d){[...el.children].forEach((s,i)=>setTimeout(()=>s.classList.add('on'),d+i*220))}
 function unwrite(){document.querySelectorAll('.reveal span').forEach(s=>s.classList.remove('on'))}
 function tick(){const d=new Date();
@@ -327,18 +340,19 @@ setInterval(tick,5000);tick();
 function sizeStage(){[ctx,W,H]=fit(cv);const words=document.querySelector('.words');
  const top=words.offsetTop+words.offsetHeight+16;G=geom(W,H,top)}
 function frame(ts){const e=ts-t0;ctx.clearRect(0,0,W,H);
+ ctx.globalAlpha=1;if(inkOut){const f=Math.max(0,1-(ts-inkOut)/1400);cv.style.opacity=f}else cv.style.opacity=1;
  drawRooms(ctx,G.rooms,Math.min(1,e/2400));
  if(e>2600)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-2600)/1200));
  raf=requestAnimationFrame(frame)}
-let isMapOpen=false;
+let isMapOpen=false,inkOut=0;
 function openMap(){if(isMapOpen||Date.now()<coolUntil)return;isMapOpen=true;coolUntil=Date.now()+2500;
- $('bye').classList.remove('on');stage.classList.add('open');sizeStage();
+ inkOut=0;stage.classList.add('open');sizeStage();
  t0=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);
- write($('t1'),500);write($('t2'),500+$('t1').children.length*220+300);
+ let d=500;['t0','t1','t2'].forEach(id=>{const el=$(id);write(el,d);d+=el.children.length*220+250});
  navigator.vibrate&&navigator.vibrate(25)}
 function closeMap(){if(!isMapOpen||Date.now()<coolUntil)return;isMapOpen=false;coolUntil=Date.now()+2500;
- $('bye').classList.add('on');unwrite();
- setTimeout(()=>{stage.classList.remove('open');setTimeout(()=>{cancelAnimationFrame(raf);$('bye').classList.remove('on')},1400)},1400)}
+ unwrite();inkOut=performance.now();
+ setTimeout(()=>{stage.classList.remove('open');setTimeout(()=>{cancelAnimationFrame(raf)},1400)},1600)}
 
 let wake=null;
 async function getWake(){try{wake=await navigator.wakeLock.request('screen')}catch(e){}}
@@ -352,7 +366,7 @@ async function goFull(){
 $('go').onclick=async()=>{
  micStop();cancelAnimationFrame(pRaf);
  await goFull();getWake();
- $('setup').hidden=true;stage.hidden=false;isMapOpen=false;stage.classList.remove('open');unwrite();tick();
+ prepAll();$('setup').hidden=true;stage.hidden=false;isMapOpen=false;stage.classList.remove('open');unwrite();tick();
  micStart('show',t=>{if(!isMapOpen&&isOpen(t)){openMap();micReset()}else if(isMapOpen&&isClose(t)){closeMap();micReset()}});
 };
 /* Secours tactile */

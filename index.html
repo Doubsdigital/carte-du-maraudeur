@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 22 -->
+<!-- version 23 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -614,7 +614,7 @@ function drawWalkers(ctx,walkers,ts,alpha,G){
   if(w.ghost){const h=here(w,w.u),du=7/Math.max(.001,h.dpu);
    for(let j=0;j<6;j++){const q=here(w,w.u-j*du),n=q.ang+Math.PI/2,sd=j%2?4:-4;ctx.save();ctx.translate(q.x+Math.cos(n)*sd,q.y+Math.sin(n)*sd);
     ctx.rotate(n);ctx.globalAlpha=(1-j/6)*.5*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
-   labels.push({w,x:h.x,y:h.y,a:.6,an:.4});return}
+   labels.push({w,x:h.x,y:h.y,a:.6,an:.6});return}
   w.prints=w.prints.filter(p=>!p.free||printAlpha(w,p,ts)>0||ts<p.t+INK_IN);
   w.prints.forEach(p=>drawFoot(ctx,p,printAlpha(w,p,ts)*alpha,ts));
   if(w.elf){const e=w.elf;e.prints=e.prints.filter(p=>!p.free||printAlpha(e,p,ts)>0||ts<p.t+INK_IN);
@@ -629,17 +629,42 @@ function drawWalkers(ctx,walkers,ts,alpha,G){
    ctx.globalAlpha=1}
   if(w.lx==null){w.lx=w.x;w.ly=w.y}
   const k=Math.min(1,(ts-(w.lt||ts))/140);w.lt=ts;w.lx+=(w.x-w.lx)*k;w.ly+=(w.y-w.ly)*k;
-  labels.push({w,x:w.lx+Math.cos(w.hd)*4,y:w.ly+Math.sin(w.hd)*4,a:1,an:.65});
+  labels.push({w,x:w.lx,y:w.ly,a:1,an:.75});
  });
- /* Les noms ne se chevauchent pas : on décale doucement ceux qui se croisent */
- ctx.font='italic 13px "IM Fell English",Georgia,serif';
- labels.sort((a,b)=>a.y-b.y);const placed=[];
- labels.forEach(L=>{const wd=ctx.measureText(L.w.n).width+6;let oy=0;
-  for(let k=0;k<4;k++){const y=L.y-14+oy;if(!placed.some(P=>Math.abs(P.x-L.x)<(P.wd+wd)/2&&Math.abs(P.y-y)<13))break;oy-=13}
-  L.w.oy+=(oy-L.w.oy)*.12;const y=L.y-14+L.w.oy;placed.push({x:L.x,y,wd});
-  ctx.globalAlpha=L.a*alpha;ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(L.w.n,L.x,y);
-  if(L.w.note){ctx.globalAlpha=L.an*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(L.w.note,L.x,y-13)}});
- ctx.globalAlpha=1;
+ /* Noms dans un bandeau de parchemin : un côté stable, changement en fondu seulement si le chevauchement dure */
+ const FN='italic 11px "IM Fell English",Georgia,serif',FS='italic 9px "IM Fell English",Georgia,serif',SIDES=['below','above','right','left'];
+ const box=(L,side)=>{const w=L.bw,h=L.bh;let cx=L.x,cy=L.y;
+  if(side==='below')cy+=10+h/2;else if(side==='above')cy-=12+h/2;else if(side==='right')cx+=9+w/2;else cx-=9+w/2;
+  return{x:cx-w/2,y:cy-h/2,w,h,cx,cy}};
+ const ov=(a,b)=>Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
+ labels.forEach(L=>{const w=L.w;
+  const crowd=labels.filter(o=>o!==L&&Math.hypot(o.x-L.x,o.y-L.y)<34).length;
+  w.noteA=(w.noteA??1)+(((w.note&&crowd<2)?1:0)-(w.noteA??1))*.08;     // notes masquées dans les groupes
+  ctx.font=FN;let bw=ctx.measureText(w.n).width;if(w.note&&w.noteA>.05){ctx.font=FS;bw=Math.max(bw,ctx.measureText(w.note).width*w.noteA)}
+  L.bw=bw+16;L.bh=13+(w.note?10*w.noteA:0);
+  if(!w.lab)w.lab={side:'below',since:-1e9,hit:null,fade:1,next:null};});
+ labels.forEach(L=>{L.r=box(L,L.w.lab.side)});
+ const others=(L,r)=>labels.reduce((s,o)=>o===L?s:s+ov(r,o.r)+(Math.hypot(o.x-(r.x+r.w/2),o.y-(r.y+r.h/2))<8?40:0),0);
+ labels.forEach(L=>{const lb=L.w.lab;
+  if(lb.next){const k=(ts-lb.t0)/280;if(k>=1&&lb.fade>0){lb.side=lb.next;lb.since=ts}
+   lb.fade=k<1?1-k:Math.min(1,k-1);if(k>=2){lb.next=null;lb.fade=1}L.r=box(L,lb.side);return}
+  if(others(L,L.r)>20){lb.hit=lb.hit??ts;
+   if(ts-lb.hit>1000&&ts-lb.since>5000){let best=lb.side,bs=others(L,L.r)*.9;
+    SIDES.forEach(sd=>{const v=others(L,box(L,sd))+(sd==='below'?0:3);if(v<bs){bs=v;best=sd}});
+    if(best!==lb.side){lb.next=best;lb.t0=ts}lb.hit=null}}
+  else lb.hit=null;});
+ labels.forEach(L=>{const w=L.w,lb=w.lab,r=L.r,a=L.a*alpha*lb.fade;if(a<=.01)return;
+  // trait d'encre vers la personne quand le bandeau n'est pas juste dessous
+  if(lb.side!=='below'){ctx.globalAlpha=a*.35;ctx.strokeStyle=INK+'1)';ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(L.x,L.y);
+   ctx.lineTo(Math.max(r.x,Math.min(r.x+r.w,L.x)),Math.max(r.y,Math.min(r.y+r.h,L.y)));ctx.stroke()}
+  // bandeau à bouts fourchus
+  const n=5;ctx.globalAlpha=a*.92;ctx.fillStyle='rgba(242,229,195,1)';ctx.beginPath();
+  ctx.moveTo(r.x-n,r.y);ctx.lineTo(r.x+r.w+n,r.y);ctx.lineTo(r.x+r.w+n*.2,r.y+r.h/2);ctx.lineTo(r.x+r.w+n,r.y+r.h);
+  ctx.lineTo(r.x-n,r.y+r.h);ctx.lineTo(r.x-n*.2,r.y+r.h/2);ctx.closePath();ctx.fill();
+  ctx.globalAlpha=a*.6;ctx.strokeStyle=INK+'1)';ctx.lineWidth=.8;ctx.stroke();
+  ctx.fillStyle='rgba(59,36,18,1)';ctx.globalAlpha=a;ctx.font=FN;ctx.fillText(w.n,r.cx,r.y+7);
+  if(w.note&&w.noteA>.05){ctx.globalAlpha=a*L.an*w.noteA;ctx.font=FS;ctx.fillText(w.note,r.cx,r.y+16.5)}});
+ ctx.fillStyle='rgba(59,36,18,.9)';ctx.globalAlpha=1;
 }
 
 function fit(c){const d=devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;c.width=W*d;c.height=H*d;const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return[x,W,H]}

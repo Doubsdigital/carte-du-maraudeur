@@ -184,7 +184,8 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
     <li>« Révèle tous tes secrets » : la carte répond par ses quatre messages. « Méfait accompli » efface tout.</li>
     <li>« Vibromassorum » fait vibrer le téléphone de plus en plus fort pendant une dizaine de secondes. « Finite Incantatem » l'arrête net.</li>
     <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer, double appui sur l'écran blanc pour Nox ou sur les messages pour les effacer.</li>
-    <li>Pour revenir ici : trois appuis rapides dans le coin en haut à gauche.</li>
+    <li>L'app s'ouvre directement sur le faux écran verrouillé. Si les deux-points ne clignotent pas, touche l'écran une fois pour lancer l'écoute.</li>
+    <li>Pour revenir ici : appui long sur l'icône de l'app puis « Réglages », ou trois appuis rapides dans le coin en haut à gauche pendant le tour.</li>
    </ol>
   </section>
  </div>
@@ -241,6 +242,7 @@ const TAUNT=['Messire Lunard rappelle au porteur que ce parchemin ne se laisse p
  'Messire Queudver n\'a rien à ajouter : il est déjà parti se cacher.'];
 const INSC=['Lunard · Queudver · Patmol · Cornedrue','La Carte du Maraudeur','Ici se trouvent tous ceux qui hantent ces lieux'];
 try{S=JSON.parse(localStorage.getItem(KEY))||null}catch(e){S=null}
+const FIRST_RUN=!S;
 if(!S)S=JSON.parse(JSON.stringify(EXAMPLE));
 if(!S.insc)S.insc=INSC.slice();
 if(!S.taunt)S.taunt=TAUNT.slice();
@@ -547,11 +549,7 @@ async function goFull(){
  try{if(!document.fullscreenElement&&el.requestFullscreen)await el.requestFullscreen({navigationUI:'hide'})}catch(e){}
  try{await screen.orientation.lock('portrait')}catch(e){}
 }
-$('go').onclick=async()=>{
- micStop();torchOff();$('testTorch').textContent='Tester';cancelAnimationFrame(pRaf);
- await goFull();getWake();
- prepAll();$('setup').hidden=true;stage.hidden=false;isMapOpen=false;stage.classList.remove('open');unwrite();tick();
- micStart('show',t=>{
+function listenShow(){micStart('show',t=>{
   if(isVibro(t)){vibro();micReset();return}
   if(isFinite(t)){unvibro();micReset();return}
   if(lit){if(isNox(t)){nox();micReset()}return}
@@ -559,8 +557,16 @@ $('go').onclick=async()=>{
   if(!tauntOpen&&isReveal(t)){openTaunt();micReset();return}
   if(tauntOpen&&isClose(t)){closeTaunt();if(isMapOpen){coolUntil=0;closeMap()}micReset();return}
   if(tauntOpen)return;
-  if(!isMapOpen&&isOpen(t)){openMap();micReset()}else if(isMapOpen&&isClose(t)){closeMap();micReset()}});
-};
+  if(!isMapOpen&&isOpen(t)){openMap();micReset()}else if(isMapOpen&&isClose(t)){closeMap();micReset()}});}
+async function startShow(){
+ micStop();torchOff();$('testTorch').textContent='Tester';cancelAnimationFrame(pRaf);
+ goFull();getWake();
+ prepAll();$('setup').hidden=true;stage.hidden=false;isMapOpen=false;stage.classList.remove('open');unwrite();tick();
+ listenShow();
+}
+$('go').onclick=startShow;
+/* Filet de sécurité : si Chrome a bloqué l'écoute au lancement, le premier appui la démarre */
+stage.addEventListener('pointerdown',()=>{if(!stage.classList.contains('listening'))listenShow();goFull()},true);
 /* Secours tactile */
 let hold;
 $('lock').addEventListener('pointerdown',()=>{goFull();hold=setTimeout(openMap,700)});
@@ -581,6 +587,8 @@ addEventListener('resize',()=>{if(isMapOpen)sizeStage()});
 let deferred;
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('install').hidden=false});
 $('install').onclick=async()=>{if(!deferred)return;deferred.prompt();await deferred.userChoice;deferred=null;$('install').hidden=true};
+const WANT_SETUP=/[?&]reglages/.test(location.search)||location.hash==='#reglages';
+if(!WANT_SETUP&&!FIRST_RUN)startShow();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>

@@ -86,6 +86,8 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 #bye{position:absolute;z-index:3;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
   font-family:var(--display);font-size:clamp(28px,9vw,44px);color:var(--ink);opacity:0;transition:opacity .6s;pointer-events:none}
 #bye.on{opacity:1}
+#lumos{position:absolute;inset:0;z-index:4;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s ease}
+#stage.lit #lumos{opacity:1;pointer-events:auto}
 #exit{position:absolute;z-index:5;top:0;left:0;width:90px;height:90px}
 @media (prefers-reduced-motion:reduce){#map,#lock,.reveal span{transition:none}}
 </style>
@@ -147,7 +149,8 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
     <li>Les deux-points de l'heure clignotent quand l'app t'écoute.</li>
     <li>« Je jure solennellement que mes intentions sont mauvaises » fait apparaître la carte.</li>
     <li>« Méfait accompli » efface l'encre et le parchemin redevient vierge.</li>
-    <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer.</li>
+    <li>« Lumos » à tout moment : l'écran devient blanc. « Nox » revient à l'écran d'avant.</li>
+    <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer, double appui sur l'écran blanc pour Nox.</li>
     <li>Pour revenir ici : trois appuis rapides dans le coin en haut à gauche.</li>
    </ol>
   </section>
@@ -172,6 +175,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
    <p class="reveal" id="t2"></p>
   </div>
  </div>
+ <div id="lumos"></div>
  <div id="exit"></div>
 </div>
 
@@ -293,6 +297,8 @@ document.fonts&&document.fonts.ready.then(drawPreview);drawPreview();
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const norm=s=>s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 const isOpen=t=>/jur/.test(t)&&/(solenn|solen|intention|mauvais)/.test(t);
+const isLumos=t=>/\b(lumos|lumo|lumose|lumosse|loumos|lu mos|lou mos)\b/.test(t);
+const isNox=t=>/\b(nox|knox|noks|nocs|noxe|nokse)\b/.test(t);
 const isClose=t=>/(mefait|me fait|meffet|accompli)/.test(t);
 let rec=null,mode=null,wantOn=false,coolUntil=0,onHeard=null;
 function micStart(m,handler){
@@ -319,7 +325,9 @@ function setListening(on,msg){
 $('testMic').onclick=()=>{
  if(wantOn&&mode==='test'){micStop();$('testMic').textContent='Tester le micro';return}
  if(!micStart('test',(t,raw)=>{$('heard').textContent=raw;
-   if(isOpen(t))$('vstate').textContent='✓ Phrase d\'ouverture reconnue';
+   if(isLumos(t))$('vstate').textContent='✓ « Lumos » reconnu';
+   else if(isNox(t))$('vstate').textContent='✓ « Nox » reconnu';
+   else if(isOpen(t))$('vstate').textContent='✓ Phrase d\'ouverture reconnue';
    else if(isClose(t))$('vstate').textContent='✓ « Méfait accompli » reconnu';})){
   $('vstate').textContent='La reconnaissance vocale n\'est pas disponible dans ce navigateur. Utilise Chrome.';return}
  $('testMic').textContent='Arrêter le test';
@@ -344,7 +352,9 @@ function frame(ts){const e=ts-t0;ctx.clearRect(0,0,W,H);
  drawRooms(ctx,G.rooms,Math.min(1,e/2400));
  if(e>2600)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-2600)/1200));
  raf=requestAnimationFrame(frame)}
-let isMapOpen=false,inkOut=0;
+let isMapOpen=false,inkOut=0,lit=false;
+function lumos(){if(lit)return;lit=true;stage.classList.add('lit');navigator.vibrate&&navigator.vibrate(20)}
+function nox(){if(!lit)return;lit=false;stage.classList.remove('lit')}
 function openMap(){if(isMapOpen||Date.now()<coolUntil)return;isMapOpen=true;coolUntil=Date.now()+2500;
  inkOut=0;stage.classList.add('open');sizeStage();
  t0=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);
@@ -367,7 +377,10 @@ $('go').onclick=async()=>{
  micStop();cancelAnimationFrame(pRaf);
  await goFull();getWake();
  prepAll();$('setup').hidden=true;stage.hidden=false;isMapOpen=false;stage.classList.remove('open');unwrite();tick();
- micStart('show',t=>{if(!isMapOpen&&isOpen(t)){openMap();micReset()}else if(isMapOpen&&isClose(t)){closeMap();micReset()}});
+ micStart('show',t=>{
+  if(lit){if(isNox(t)){nox();micReset()}return}
+  if(isLumos(t)){lumos();micReset();return}
+  if(!isMapOpen&&isOpen(t)){openMap();micReset()}else if(isMapOpen&&isClose(t)){closeMap();micReset()}});
 };
 /* Secours tactile */
 let hold;
@@ -375,10 +388,12 @@ $('lock').addEventListener('pointerdown',()=>{goFull();hold=setTimeout(openMap,7
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>$('lock').addEventListener(ev,()=>clearTimeout(hold)));
 let lastTap=0;
 $('map').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastTap<350){coolUntil=0;closeMap()}lastTap=n});
+let lastLit=0;
+$('lumos').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastLit<350)nox();lastLit=n});
 /* Sortie : 3 appuis en haut à gauche */
 let taps=[];
 $('exit').addEventListener('pointerdown',e=>{e.stopPropagation();const n=Date.now();taps=taps.filter(t=>n-t<1500);taps.push(n);
- if(taps.length>=3){taps=[];micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
+ if(taps.length>=3){taps=[];nox();micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
   try{wake&&wake.release()}catch(e){};drawPreview()}});
 addEventListener('resize',()=>{if(isMapOpen)sizeStage()});
 

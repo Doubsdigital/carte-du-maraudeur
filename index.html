@@ -86,6 +86,16 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 #bye{position:absolute;z-index:3;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
   font-family:var(--display);font-size:clamp(28px,9vw,44px);color:var(--ink);opacity:0;transition:opacity .6s;pointer-events:none}
 #bye.on{opacity:1}
+#taunt{position:absolute;inset:0;z-index:3;background:radial-gradient(ellipse at 50% 40%,var(--paper) 55%,var(--paper-edge) 130%);
+  opacity:0;pointer-events:none;transition:opacity 1.2s ease;display:flex;flex-direction:column;justify-content:center;gap:26px;
+  padding-left:max(28px,env(safe-area-inset-left,0px));padding-right:max(28px,env(safe-area-inset-right,0px));
+  padding-block:calc(env(safe-area-inset-top,0px) + 40px) calc(env(safe-area-inset-bottom,0px) + 40px);color:var(--ink)}
+#stage.taunt #taunt{opacity:1;pointer-events:auto}
+#taunt p{margin:0;font-family:var(--body);font-size:clamp(19px,5.6vw,26px);line-height:1.3;text-wrap:balance}
+#taunt p:nth-child(odd){font-style:italic}
+#taunt p:nth-child(2){text-align:right}
+#taunt p:nth-child(3){font-family:var(--display);font-size:clamp(17px,5vw,23px)}
+#taunt p:nth-child(4){text-align:right;font-size:clamp(17px,5vw,22px)}
 #lumos{position:absolute;inset:0;z-index:4;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s ease}
 #stage.lit #lumos{opacity:1;pointer-events:auto}
 #exit{position:absolute;z-index:5;top:0;left:0;width:90px;height:90px}
@@ -113,6 +123,24 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
    <input type="text" id="insc0" placeholder="Auteurs">
    <input type="text" id="insc1" placeholder="Titre">
    <input type="text" id="insc2" placeholder="Sous-titre (facultatif)">
+  </section>
+
+  <section>
+   <h2>Lumos</h2>
+   <div class="row"><select id="lumode" style="flex:1">
+    <option value="torch">Allume la lampe torche (LED)</option>
+    <option value="screen">Passe l'écran en blanc</option>
+   </select><button class="ghost" id="testTorch">Tester</button></div>
+   <p class="hint" id="torchMsg">Teste une fois avant la soirée pour autoriser l'accès à la lampe. Si la LED ne répond pas, l'écran passe en blanc à la place.</p>
+  </section>
+
+  <section>
+   <h2>« Révèle tous tes secrets »</h2>
+   <p class="hint">La carte répond au curieux avec ces quatre messages, écrits l'un après l'autre.</p>
+   <input type="text" id="taunt0">
+   <input type="text" id="taunt1">
+   <input type="text" id="taunt2">
+   <input type="text" id="taunt3">
   </section>
 
   <section>
@@ -149,8 +177,9 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
     <li>Les deux-points de l'heure clignotent quand l'app t'écoute.</li>
     <li>« Je jure solennellement que mes intentions sont mauvaises » fait apparaître la carte.</li>
     <li>« Méfait accompli » efface l'encre et le parchemin redevient vierge.</li>
-    <li>« Lumos » à tout moment : l'écran devient blanc. « Nox » revient à l'écran d'avant.</li>
-    <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer, double appui sur l'écran blanc pour Nox.</li>
+    <li>« Lumos » à tout moment allume la lampe torche, ou l'écran en blanc selon ton réglage. « Nox » l'éteint.</li>
+    <li>« Révèle tous tes secrets » : la carte répond par ses quatre messages. « Méfait accompli » efface tout.</li>
+    <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer, double appui sur l'écran blanc pour Nox ou sur les messages pour les effacer.</li>
     <li>Pour revenir ici : trois appuis rapides dans le coin en haut à gauche.</li>
    </ol>
   </section>
@@ -175,6 +204,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
    <p class="reveal" id="t2"></p>
   </div>
  </div>
+ <div id="taunt" class="reveal-host"><p class="reveal" id="m0"></p><p class="reveal" id="m1"></p><p class="reveal" id="m2"></p><p class="reveal" id="m3"></p></div>
  <div id="lumos"></div>
  <div id="exit"></div>
 </div>
@@ -201,10 +231,16 @@ const EXAMPLE={me:'',
   {n:'Invité 3',note:'',room:'Cuisine'}
  ]};
 let S;
+const TAUNT=['Messire Lunard rappelle au porteur que ce parchemin ne se laisse pas lire par n\'importe qui.',
+ 'Messire Patmol ajoute que les secrets se méritent, et que ce n\'est visiblement pas le cas ici.',
+ 'Messire Cornedrue suggère d\'essayer plutôt avec un grimoire pour débutants.',
+ 'Messire Queudver n\'a rien à ajouter : il est déjà parti se cacher.'];
 const INSC=['Lunard · Queudver · Patmol · Cornedrue','La Carte du Maraudeur','Ici se trouvent tous ceux qui hantent ces lieux'];
 try{S=JSON.parse(localStorage.getItem(KEY))||null}catch(e){S=null}
 if(!S)S=JSON.parse(JSON.stringify(EXAMPLE));
 if(!S.insc)S.insc=INSC.slice();
+if(!S.taunt)S.taunt=TAUNT.slice();
+if(!S.lumode)S.lumode='torch';
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
 /* ---------- Éditeur ---------- */
@@ -232,6 +268,8 @@ function renderGuests(){
   </div>`).join('');
 }
 $('me').value=S.me||'';
+$('lumode').value=S.lumode;$('lumode').onchange=e=>{S.lumode=e.target.value;save()};
+[0,1,2,3].forEach(i=>{const el=$('taunt'+i);el.value=S.taunt[i]||'';el.oninput=()=>{S.taunt[i]=el.value;save()}});
 [0,1,2].forEach(i=>{const el=$('insc'+i);el.value=S.insc[i]||'';el.oninput=()=>{S.insc[i]=el.value;save()}});
 $('me').oninput=e=>{S.me=e.target.value;save();drawPreview()};
 $('rooms').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null)return;
@@ -299,6 +337,7 @@ const norm=s=>s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 const isOpen=t=>/jur/.test(t)&&/(solenn|solen|intention|mauvais)/.test(t);
 const isLumos=t=>/\b(lumos|lumo|lumose|lumosse|loumos|lu mos|lou mos)\b/.test(t);
 const isNox=t=>/\b(nox|knox|noks|nocs|noxe|nokse)\b/.test(t);
+const isReveal=t=>/revel/.test(t)&&/secret/.test(t);
 const isClose=t=>/(mefait|me fait|meffet|accompli)/.test(t);
 let rec=null,mode=null,wantOn=false,coolUntil=0,onHeard=null;
 function micStart(m,handler){
@@ -327,6 +366,7 @@ $('testMic').onclick=()=>{
  if(!micStart('test',(t,raw)=>{$('heard').textContent=raw;
    if(isLumos(t))$('vstate').textContent='✓ « Lumos » reconnu';
    else if(isNox(t))$('vstate').textContent='✓ « Nox » reconnu';
+   else if(isReveal(t))$('vstate').textContent='✓ « Révèle tous tes secrets » reconnu';
    else if(isOpen(t))$('vstate').textContent='✓ Phrase d\'ouverture reconnue';
    else if(isClose(t))$('vstate').textContent='✓ « Méfait accompli » reconnu';})){
   $('vstate').textContent='La reconnaissance vocale n\'est pas disponible dans ce navigateur. Utilise Chrome.';return}
@@ -352,9 +392,32 @@ function frame(ts){const e=ts-t0;ctx.clearRect(0,0,W,H);
  drawRooms(ctx,G.rooms,Math.min(1,e/2400));
  if(e>2600)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-2600)/1200));
  raf=requestAnimationFrame(frame)}
-let isMapOpen=false,inkOut=0,lit=false;
-function lumos(){if(lit)return;lit=true;stage.classList.add('lit');navigator.vibrate&&navigator.vibrate(20)}
-function nox(){if(!lit)return;lit=false;stage.classList.remove('lit')}
+let isMapOpen=false,inkOut=0,lit=false,tauntOpen=false;
+function openTaunt(){if(tauntOpen)return;tauntOpen=true;
+ ['m0','m1','m2','m3'].forEach((id,i)=>{const el=$(id);el.textContent=(S.taunt[i]||'').trim();el.hidden=!el.textContent;prep(el)});
+ stage.classList.add('taunt');let d=900;['m0','m1','m2','m3'].forEach(id=>{const el=$(id);write(el,d);d+=el.children.length*170+700});
+ navigator.vibrate&&navigator.vibrate(25)}
+function closeTaunt(){if(!tauntOpen)return;tauntOpen=false;
+ document.querySelectorAll('#taunt .reveal span').forEach(s=>s.classList.remove('on'));
+ setTimeout(()=>stage.classList.remove('taunt'),700)}
+let torchTrack=null;
+async function torchOn(){
+ const st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'}}});
+ const tr=st.getVideoTracks()[0];
+ let caps=tr.getCapabilities?tr.getCapabilities():{};
+ if(!('torch' in caps)){await new Promise(r=>setTimeout(r,400));caps=tr.getCapabilities?tr.getCapabilities():{}}
+ if(!caps.torch){tr.stop();throw new Error('no-torch')}
+ await tr.applyConstraints({advanced:[{torch:true}]});torchTrack=tr;
+}
+function torchOff(){if(!torchTrack)return;try{torchTrack.applyConstraints({advanced:[{torch:false}]})}catch(e){}torchTrack.stop();torchTrack=null}
+async function lumos(){if(lit)return;lit=true;navigator.vibrate&&navigator.vibrate(20);
+ if(S.lumode==='torch'){try{await torchOn();if(!lit)torchOff();return}catch(e){}}
+ if(lit)stage.classList.add('lit')}
+function nox(){if(!lit)return;lit=false;torchOff();stage.classList.remove('lit')}
+$('testTorch').onclick=async()=>{const m=$('torchMsg');
+ if(torchTrack){torchOff();$('testTorch').textContent='Tester';m.textContent='Lampe éteinte.';return}
+ try{await torchOn();$('testTorch').textContent='Éteindre';m.textContent='✓ La lampe fonctionne. Lumos l\'allumera pendant le tour.'}
+ catch(e){m.textContent=e.message==='no-torch'?'Ce navigateur ne peut pas piloter la LED : Lumos passera l\'écran en blanc.':'Accès à la caméra refusé. Autorise-le dans les réglages du site, sinon Lumos passera l\'écran en blanc.'}};
 function openMap(){if(isMapOpen||Date.now()<coolUntil)return;isMapOpen=true;coolUntil=Date.now()+2500;
  inkOut=0;stage.classList.add('open');sizeStage();
  t0=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);
@@ -374,12 +437,15 @@ async function goFull(){
  try{await screen.orientation.lock('portrait')}catch(e){}
 }
 $('go').onclick=async()=>{
- micStop();cancelAnimationFrame(pRaf);
+ micStop();torchOff();$('testTorch').textContent='Tester';cancelAnimationFrame(pRaf);
  await goFull();getWake();
  prepAll();$('setup').hidden=true;stage.hidden=false;isMapOpen=false;stage.classList.remove('open');unwrite();tick();
  micStart('show',t=>{
   if(lit){if(isNox(t)){nox();micReset()}return}
   if(isLumos(t)){lumos();micReset();return}
+  if(!tauntOpen&&isReveal(t)){openTaunt();micReset();return}
+  if(tauntOpen&&isClose(t)){closeTaunt();if(isMapOpen){coolUntil=0;closeMap()}micReset();return}
+  if(tauntOpen)return;
   if(!isMapOpen&&isOpen(t)){openMap();micReset()}else if(isMapOpen&&isClose(t)){closeMap();micReset()}});
 };
 /* Secours tactile */
@@ -388,12 +454,13 @@ $('lock').addEventListener('pointerdown',()=>{goFull();hold=setTimeout(openMap,7
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>$('lock').addEventListener(ev,()=>clearTimeout(hold)));
 let lastTap=0;
 $('map').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastTap<350){coolUntil=0;closeMap()}lastTap=n});
-let lastLit=0;
+let lastLit=0,lastT=0;
+$('taunt').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastT<350)closeTaunt();lastT=n});
 $('lumos').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastLit<350)nox();lastLit=n});
 /* Sortie : 3 appuis en haut à gauche */
 let taps=[];
 $('exit').addEventListener('pointerdown',e=>{e.stopPropagation();const n=Date.now();taps=taps.filter(t=>n-t<1500);taps.push(n);
- if(taps.length>=3){taps=[];nox();micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
+ if(taps.length>=3){taps=[];nox();tauntOpen=true;closeTaunt();micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
   try{wake&&wake.release()}catch(e){};drawPreview()}});
 addEventListener('resize',()=>{if(isMapOpen)sizeStage()});
 

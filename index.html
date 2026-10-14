@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 24 -->
+<!-- version 25 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -113,7 +113,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
  <div class="wrap">
   <header>
    <h1>Carte du Maraudeur</h1>
-   <p>Tout ce que tu saisis reste sur ce téléphone.</p>
+   <p>Tout ce que tu saisis reste sur ce téléphone. · v25</p>
   </header>
 
   <section>
@@ -632,14 +632,14 @@ function drawWalkers(ctx,walkers,ts,alpha,G){
   labels.push({w,x:w.lx,y:w.ly,a:1,an:.75});
  });
  /* Noms dans un bandeau de parchemin : un côté stable, changement en fondu seulement si le chevauchement dure */
- const XF=1800,FN='italic 11px "IM Fell English",Georgia,serif',FS='italic 9px "IM Fell English",Georgia,serif',SIDES=['below','above','right','left'];
+ const XF=3200,FN='italic 11px "IM Fell English",Georgia,serif',FS='italic 9px "IM Fell English",Georgia,serif',SIDES=['below','above','right','left'];
  const box=(L,side)=>{const w=L.bw,h=L.bh;let cx=L.x,cy=L.y;
   if(side==='below')cy+=10+h/2;else if(side==='above')cy-=12+h/2;else if(side==='right')cx+=9+w/2;else cx-=9+w/2;
   return{x:cx-w/2,y:cy-h/2,w,h,cx,cy}};
  const ov=(a,b)=>Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
  labels.forEach(L=>{const w=L.w;
   const crowd=labels.filter(o=>o!==L&&Math.hypot(o.x-L.x,o.y-L.y)<34).length;
-  w.noteA=(w.noteA??1)+(((w.note&&crowd<2)?1:0)-(w.noteA??1))*.08;     // notes masquées dans les groupes
+  w.noteA=(w.noteA??1)+(((w.note&&crowd<2)?1:0)-(w.noteA??1))*.018;     // notes masquées dans les groupes
   ctx.font=FN;let bw=ctx.measureText(w.n).width;if(w.note&&w.noteA>.05){ctx.font=FS;bw=Math.max(bw,ctx.measureText(w.note).width*w.noteA)}
   L.bw=bw+16;L.bh=13+(w.note?10*w.noteA:0);
   if(!w.lab)w.lab={side:'below',since:-1e9,hit:null,prev:null};});
@@ -654,8 +654,9 @@ function drawWalkers(ctx,walkers,ts,alpha,G){
     if(best!==lb.side){lb.prev=lb.side;lb.side=best;lb.t0=ts;lb.since=ts;L.r=box(L,best)}lb.hit=null}}
   else lb.hit=null;});
  labels.forEach(L=>{const w=L.w,lb=w.lab;
-  if(lb.prev){const k=Math.min(1,(ts-lb.t0)/XF),e=k*k*k*(k*(k*6-15)+10); // fondu enchaîné très doux
-   drawLab(L,box(L,lb.prev),lb.prev,L.a*alpha*(1-e));drawLab(L,L.r,lb.side,L.a*alpha*e)}
+  if(lb.prev){const t=ts-lb.t0,sine=k=>.5-.5*Math.cos(Math.PI*Math.max(0,Math.min(1,k)));
+   // l'ancien s'efface lentement sur 3,2 s ; le nouveau apparaît en douceur à partir de 0,8 s
+   drawLab(L,box(L,lb.prev),lb.prev,L.a*alpha*(1-sine(t/XF)));drawLab(L,L.r,lb.side,L.a*alpha*sine((t-800)/(XF-800)))}
   else drawLab(L,L.r,lb.side,L.a*alpha)});
  function drawLab(L,r,side,a){const w=L.w;if(a<=.01)return;
   // trait d'encre vers la personne quand le bandeau n'est pas juste dessous

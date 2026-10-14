@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 13 -->
+<!-- version 14 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -74,7 +74,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 @keyframes blink{50%{opacity:.15}}
 #date{font-size:17px;color:var(--dim);margin-top:4px;text-transform:capitalize}
 #map{background:radial-gradient(ellipse at 50% 40%,var(--paper) 55%,var(--paper-edge) 130%);
-  opacity:0;pointer-events:none;transition:opacity 1.4s ease;display:flex;flex-direction:column;align-items:center}
+  opacity:0;pointer-events:none;transition:opacity 2.4s ease;display:flex;flex-direction:column;align-items:center}
 #stage.open #map{opacity:1;pointer-events:auto}
 #stage.open #lock{opacity:0}
 #cv{position:absolute;inset:0;width:100%;height:100%}
@@ -82,7 +82,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 .words h1{font-family:var(--display);font-weight:400;font-size:clamp(22px,6.6vw,32px);line-height:1.15;margin:0 0 8px;text-wrap:balance}
 .words .sub{font-family:var(--display);font-style:normal;font-size:13px;letter-spacing:.08em;margin:0 0 8px}
 .words p{font-style:italic;font-size:16px;margin:0;color:var(--ink-soft)}
-.reveal span{opacity:0;transition:opacity .5s}
+.reveal span{opacity:0;transition:opacity .9s ease}
 .reveal span.on{opacity:1}
 #bye{position:absolute;z-index:3;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
   font-family:var(--display);font-size:clamp(28px,9vw,44px);color:var(--ink);opacity:0;transition:opacity .6s;pointer-events:none}
@@ -482,7 +482,7 @@ const stage=$('stage'),cv=$('cv');let ctx,W,H,G,raf,t0=0;
 function prep(el){el.innerHTML=el.textContent.trim().split(/\s+/).map(w=>`<span>${w}</span>`).join(' ')}
 function prepAll(){['t0','t1','t2'].forEach((id,i)=>{const el=$(id);el.textContent=(S.insc[i]||'').trim();el.hidden=!el.textContent;prep(el)})}
 prepAll();
-function write(el,d){[...el.children].forEach((s,i)=>setTimeout(()=>s.classList.add('on'),d+i*220))}
+function write(el,d,step=220){[...el.children].forEach((s,i)=>setTimeout(()=>s.classList.add('on'),d+i*step))}
 function unwrite(){document.querySelectorAll('.reveal span').forEach(s=>s.classList.remove('on'))}
 function tick(){const d=new Date();
  $('time').innerHTML=String(d.getHours()).padStart(2,'0')+'<span class="c">:</span>'+String(d.getMinutes()).padStart(2,'0');
@@ -496,9 +496,10 @@ function sizeStage(){[ctx,W,H]=fit(cv);const words=document.querySelector('.word
 function frame(ts){const e=ts-t0;ctx.clearRect(0,0,W,H);
  ctx.globalAlpha=1;if(inkOut){const f=Math.max(0,1-(ts-inkOut)/1400);cv.style.opacity=f}else cv.style.opacity=1;
  ctx.drawImage(PAP,0,0,W,H);
- const k=Math.min(1,e/2600);inkReveal(ctx,INKL,W,H,1-Math.pow(1-k,2));
+ /* l'encre attend que le titre commence, puis se répand lentement (≈8 s) */
+ const k=Math.max(0,Math.min(1,(e-2600)/8000)),ke=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;inkReveal(ctx,INKL,W,H,ke);
  ctx.fillStyle=INK+'.9)';ctx.textAlign='center';ctx.textBaseline='middle';
- if(e>2800)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-2800)/1200));
+ if(e>10000)drawWalkers(ctx,G.walkers,ts,Math.min(1,(e-10000)/2000));
  raf=requestAnimationFrame(frame)}
 let isMapOpen=false,inkOut=0,lit=false,tauntOpen=false;
 function openTaunt(){if(tauntOpen)return;tauntOpen=true;
@@ -561,10 +562,10 @@ $('testTorch').onclick=async()=>{const m=$('torchMsg');
  m.textContent='Recherche de la lampe…';
  try{await torchOn();$('testTorch').textContent='Éteindre';m.textContent='✓ La lampe fonctionne. Lumos l\'allumera pendant le tour. ('+torchLog.join(' · ')+')'}
  catch(e){m.textContent=(e.name==='NotAllowedError'?'Accès à la caméra refusé : autorise-le dans les réglages du site (cadenas → Autorisations → Caméra).':'Aucune LED trouvée : Lumos passera l\'écran en blanc.')+' Détail : '+(torchLog.join(' · ')||e.name||e.message)}};
-function openMap(){if(isMapOpen||Date.now()<coolUntil)return;isMapOpen=true;coolUntil=Date.now()+2500;
+function openMap(){if(isMapOpen||Date.now()<coolUntil)return;isMapOpen=true;coolUntil=Date.now()+6000;
  inkOut=0;stage.classList.add('open');sizeStage();
  t0=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);
- let d=500;['t0','t1','t2'].forEach(id=>{const el=$(id);write(el,d);d+=el.children.length*220+250});
+ let d=1400;['t0','t1','t2'].forEach(id=>{const el=$(id);write(el,d,380);d+=el.children.length*380+500});
  navigator.vibrate&&navigator.vibrate(25)}
 function closeMap(){if(!isMapOpen||Date.now()<coolUntil)return;isMapOpen=false;coolUntil=Date.now()+2500;
  unwrite();inkOut=performance.now();

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 11 -->
+<!-- version 12 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -184,9 +184,9 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
     <li>« Lumos » à tout moment allume la lampe torche, ou l'écran en blanc selon ton réglage. « Nox » l'éteint.</li>
     <li>« Révèle tous tes secrets » : la carte répond par ses quatre messages. « Méfait accompli » efface tout.</li>
     <li>« Vibromassorum » fait vibrer le téléphone de plus en plus fort pendant une dizaine de secondes. « Finite Incantatem » l'arrête net.</li>
-    <li>Secours : appui long sur l'écran noir pour ouvrir, double appui sur la carte pour fermer, double appui sur l'écran blanc pour Nox ou sur les messages pour les effacer.</li>
+    <li>Secours : sur l'écran noir, un appui normal puis un appui long ouvre la carte. Huit appuis rapides n'importe où sur la carte ou les messages font « Méfait accompli ». Double appui sur l'écran blanc pour Nox.</li>
     <li>L'app s'ouvre directement sur le faux écran verrouillé. Si les deux-points ne clignotent pas, touche l'écran une fois pour lancer l'écoute.</li>
-    <li>Pour revenir ici : appui long sur l'icône de l'app puis « Réglages », ou trois appuis rapides dans le coin en haut à gauche pendant le tour.</li>
+    <li>Pour revenir ici : appui long sur l'icône de l'app puis « Réglages », ou huit appuis rapides dans le coin en haut à gauche pendant le tour.</li>
    </ol>
   </section>
  </div>
@@ -576,19 +576,24 @@ $('go').onclick=startShow;
 /* Filet de sécurité : si Chrome a bloqué l'écoute au lancement, le premier appui la démarre */
 stage.addEventListener('pointerdown',()=>{if(!stage.classList.contains('listening'))listenShow();goFull()},true);
 /* Secours tactile */
-let hold;
-$('lock').addEventListener('pointerdown',()=>{goFull();hold=setTimeout(openMap,700)});
-['pointerup','pointercancel','pointerleave'].forEach(ev=>$('lock').addEventListener(ev,()=>clearTimeout(hold)));
-let lastTap=0;
-$('map').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastTap<350){coolUntil=0;closeMap()}lastTap=n});
-let lastLit=0,lastT=0;
-$('taunt').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastT<350)closeTaunt();lastT=n});
+/* Compteur d'appuis rapides : n appuis espacés de moins de 600 ms */
+function tapCounter(n,fn){let c=0,last=0;return()=>{const t=Date.now();c=t-last<600?c+1:1;last=t;if(c>=n){c=0;fn()}}}
+/* Ouverture : un appui normal, puis un appui long dans la foulée */
+let hold,lastUp=0,downAt=0;
+$('lock').addEventListener('pointerdown',()=>{goFull();downAt=Date.now();
+ if(downAt-lastUp<700)hold=setTimeout(()=>{lastUp=0;openMap()},600)});
+$('lock').addEventListener('pointerup',()=>{clearTimeout(hold);if(Date.now()-downAt<300)lastUp=Date.now()});
+['pointercancel','pointerleave'].forEach(ev=>$('lock').addEventListener(ev,()=>clearTimeout(hold)));
+/* Méfait accompli : 8 appuis n'importe où sur la carte ou sur les messages */
+const mefait=tapCounter(8,()=>{if(tauntOpen){closeTaunt();if(isMapOpen){coolUntil=0;closeMap()}}else{coolUntil=0;closeMap()}});
+$('map').addEventListener('pointerdown',mefait);
+$('taunt').addEventListener('pointerdown',mefait);
+let lastLit=0;
 $('lumos').addEventListener('pointerdown',()=>{const n=Date.now();if(n-lastLit<350)nox();lastLit=n});
-/* Sortie : 3 appuis en haut à gauche */
-let taps=[];
-$('exit').addEventListener('pointerdown',e=>{e.stopPropagation();const n=Date.now();taps=taps.filter(t=>n-t<1500);taps.push(n);
- if(taps.length>=3){taps=[];nox();unvibro();tauntOpen=true;closeTaunt();micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
-  try{wake&&wake.release()}catch(e){};drawPreview()}});
+/* Réglages : 8 appuis rapides dans le coin en haut à gauche */
+$('exit').addEventListener('pointerdown',e=>{e.stopPropagation();toSetup()});
+const toSetup=tapCounter(8,()=>{nox();unvibro();tauntOpen=true;closeTaunt();micStop();cancelAnimationFrame(raf);stage.hidden=true;$('setup').hidden=false;
+  try{wake&&wake.release()}catch(e){};drawPreview()});
 addEventListener('resize',()=>{if(isMapOpen)sizeStage()});
 
 /* ---------- Installation ---------- */

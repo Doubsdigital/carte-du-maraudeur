@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 20 -->
+<!-- version 21 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,7 +157,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 
   <section>
    <h2>Les invités</h2>
-   <p class="hint">« Reste dans sa pièce » : se balade dans sa pièce. « Se promène partout » : va de pièce en pièce par les portes et les couloirs, plus souvent dans sa pièce préférée. « Fantôme » : glisse à travers les murs. La note s'écrit en petit au-dessus du nom.</p>
+   <p class="hint">« Reste dans sa pièce » : se balade dans sa pièce. « Se promène partout » : va de pièce en pièce par les portes et les couloirs, plus souvent dans sa pièce préférée. « Fantôme » : glisse à travers les murs. Les invités vont aussi discuter entre eux. Dobby junior trottine derrière l'invité qui l'a. La note s'écrit en petit au-dessus du nom.</p>
    <div id="guests" style="display:flex;flex-direction:column;gap:8px"></div>
    <button class="add" id="addGuest">+ Ajouter un invité</button>
   </section>
@@ -276,6 +276,7 @@ function renderGuests(){
    <input type="text" id="gt${i}" data-g="${i}" data-k="note" value="${esc(g.note||'')}" placeholder="Note (facultatif)">
    <div class="row"><select id="gm${i}" data-g="${i}" data-k="mode" style="flex:1 1 150px">${MODES.map(([v,l])=>`<option value="${v}"${g.mode===v?' selected':''}>${l}</option>`).join('')}</select>
     ${g.mode==='ghost'?'':`<select id="gr${i}" data-g="${i}" data-k="room" style="flex:1 1 120px" aria-label="${g.mode==='visit'?'Pièce préférée':'Pièce'}">${roomOptions(g.room,g.mode)}</select>`}</div>
+   ${g.mode==='ghost'?'':`<select id="gc${i}" data-g="${i}" data-k="comp"><option value="">Pas de compagnon</option><option value="elf"${g.comp==='elf'?' selected':''}>Suivi·e par Dobby junior</option></select>`}
   </div>`).join('');
 }
 $('me').value=S.me||'';
@@ -344,7 +345,7 @@ function geom(W,H,top,bottom){
  const list=[...(S.me?[{n:S.me,note:'',room:'',mode:S.meMode||'visit'}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
  const walkers=list.map(p=>{const ri=S.rooms.findIndex(r=>r.n===p.room);let mode=p.mode||(p.room?'room':'ghost');
   if(mode==='room'&&ri<0)mode='visit';
-  return{n:p.n,note:p.note,mode,ri:ri>=0?ri:null,ghost:mode==='ghost',b:all,phase:Math.random()*Math.PI*2,k:1+Math.floor(Math.random()*3)}});
+  return{n:p.n,note:p.note,comp:p.comp||'',mode,ri:ri>=0?ri:null,ghost:mode==='ghost',b:all,phase:Math.random()*Math.PI*2,k:1+Math.floor(Math.random()*3)}});
  const G={rooms,walkers,castle:{x:pad,y:top,w:gw,h:gh},top};G.nav=buildNav(G,W,H);return G;
 }
 
@@ -502,19 +503,33 @@ function walkMood(w,ts){const r=Math.random();
  else if(r<.72){w.target=rnd(1.3,1.55);w.until=ts+rnd(3e3,7e3)}
  else if(r<.9){w.target=rnd(.4,.6);w.until=ts+rnd(5e3,14e3)}
  else{w.target=w.cm||1;w.until=ts+rnd(6e3,15e3);if(w.state==='walk')stand(w,ts,rnd(3e3,10e3))}}
+function pathLen(p){let L=0;for(let i=1;i<p.length;i++)L+=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);return L}
+function pickTalk(G,w,walkers,ts){
+ const nav=G.nav,room=w.mode==='room'&&w.ri!=null?G.rooms[w.ri]:null;
+ const c=walkers.filter(o=>o!==w&&!o.ghost&&o.state==='stand'&&o.standUntil-ts>6000&&walkers.filter(q=>q.talk===o).length<3&&
+  (!room||nav.pc.isPointInPath(room.p2d,o.x,o.y)));
+ if(!c.length)return null;const B=c[Math.floor(Math.random()*c.length)];
+ for(let k=0;k<14;k++){const a=Math.random()*Math.PI*2,x=B.x+Math.cos(a)*14,y=B.y+Math.sin(a)*14;
+  if(!roomy(nav,x,y,5)||(room&&!nav.pc.isPointInPath(room.p2d,x,y)))continue;
+  if(walkers.some(o=>o!==w&&o!==B&&!o.ghost&&Math.hypot(o.x-x,o.y-y)<10))continue;
+  return{B,spot:{x,y}}}
+ return null;
+}
 function stopTime(){return Math.random()<.25?rnd(60e3,240e3):rnd(5e3,35e3)}
 
 /* --- Empreintes --- */
 function addPrint(w,ts,x,y,ang,side,delay=0){const p={x,y,ang:ang+rnd(-.09,.09),side,t:ts+delay,ink:rnd(.78,1),off:rnd(3.1,4)};w.prints.push(p);
  const old=w.prints[w.prints.length-3];if(old&&!old.free)old.free=ts+delay; // un pas pâlit seulement quand deux pas plus récents sont posés
  return p}
-function stand(w,ts,dur){if(w.state==='stand')return;w.state='stand';w.standUntil=ts+dur;
+function stand(w,ts,dur,face){if(w.state==='stand')return;w.state='stand';w.standUntil=ts+dur;
  const last=w.prints[w.prints.length-1];
- if(last&&Math.hypot(last.x-w.x,last.y-w.y)<14){w.stand=[last,addPrint(w,ts,last.x,last.y,last.ang,-last.side,260)];w.stand[1].ang=last.ang}
+ if(face!=null){const a=face;w.stand=[addPrint(w,ts,w.x,w.y,a,-1,80),addPrint(w,ts,w.x,w.y,a,1,300)]}
+ else if(last&&Math.hypot(last.x-w.x,last.y-w.y)<14){w.stand=[last,addPrint(w,ts,last.x,last.y,last.ang,-last.side,260)];w.stand[1].ang=last.ang}
  else{const a=w.hd||0;w.stand=[addPrint(w,ts,w.x,w.y,a,-1),addPrint(w,ts,w.x,w.y,a,1,120)]}}
 function unstand(w,ts){w.stand=null;w.state='walk';w.next=w.dist+STRIDE*.6}
 
 function initWalker(G,w,ts,walkers){
+ w.hist=[];w.talk=null;
  w.base=rnd(.75,1.15);w.cm=1;w.target=1;w.prints=[];w.dist=0;w.next=STRIDE;w.n0=Math.random()<.5?0:1;w.oy=0;
  if(w.ghost){w.u=Math.random()*Math.PI*2;w.clock=0;ghostMood(w);return}
  const sp=pickSpot(G,w,walkers)||{x:G.castle.x+G.castle.w/2,y:G.castle.y+G.castle.h/2};
@@ -529,7 +544,11 @@ function updateWalker(G,w,ts,dt,walkers){
  if(ts>w.until)walkMood(w,ts);
  if(w.state==='stand'){
   if(ts<w.standUntil)return;
-  if(!w.path||w.pi>=w.path.length){const d=pickSpot(G,w,walkers);const p=d&&findPath(G.nav,{x:w.x,y:w.y},d);
+  if(!w.path||w.pi>=w.path.length){w.talk=null;
+   const t=Math.random()<.45&&pickTalk(G,w,walkers,ts);let d,p;
+   if(t){d=t.spot;p=findPath(G.nav,{x:w.x,y:w.y},d);
+    if(p){w.talk=t.B;t.B.standUntil=Math.max(t.B.standUntil,ts+pathLen(p)/(SPEED*w.base*.9)+6000)}}
+   if(!p){d=pickSpot(G,w,walkers);p=d&&findPath(G.nav,{x:w.x,y:w.y},d)}
    if(!p){w.standUntil=ts+2000;return}w.path=p;w.pi=1;w.dest=d}
   unstand(w,ts);
  }
@@ -540,20 +559,45 @@ function updateWalker(G,w,ts,dt,walkers){
   if(d>.01)w.hd=lerpA(w.hd,Math.atan2(dy,dx),Math.min(1,dt/260))}
  w.dist+=moved;
  while(w.dist>=w.next){addPrint(w,ts,w.x,w.y,w.hd,(w.n0++%2)?1:-1);w.next+=STRIDE*rnd(.9,1.1)}
- if(w.pi>=w.path.length){w.path=null;w.dest=null;stand(w,ts,stopTime())}
+ if(moved>0){const h=w.hist,l=h[h.length-1];if(!l||Math.hypot(l.x-w.x,l.y-w.y)>2){h.push({x:w.x,y:w.y});if(h.length>90)h.shift()}}
+ if(w.pi>=w.path.length){w.path=null;w.dest=null;const B=w.talk;
+  if(B&&!B.ghost&&Math.hypot(B.x-w.x,B.y-w.y)<26){ // arrivé : on discute
+   w.hd=Math.atan2(B.y-w.y,B.x-w.x);const dur=Math.random()<.2?rnd(120e3,240e3):rnd(15e3,90e3);
+   stand(w,ts,dur,w.hd);B.standUntil=Math.max(B.standUntil,ts+dur*rnd(.85,1.1));w.talkT=ts}
+  else{w.talk=null;stand(w,ts,stopTime())}}
 }
 
+function updateElf(G,w,ts,dt){
+ let e=w.elf;if(!e){e=w.elf={x:w.x-6,y:w.y+6,hd:w.hd||0,prints:[],dist:0,next:4.5,n0:0,last:ts,standing:false,fid:ts+rnd(6e3,12e3)};
+  e.prints.push({x:e.x,y:e.y,ang:e.hd,side:-1,t:ts-INK_IN,ink:.9,off:2,small:1},{x:e.x,y:e.y,ang:e.hd,side:1,t:ts-INK_IN,ink:.9,off:2,small:1});e.standing=true}
+ let tx,ty;
+ if(w.state==='stand'){ // se poste à côté d'elle ; de temps en temps, trottine sur place
+  const side=(w.n0%2?1:-1),n=w.hd+Math.PI/2;tx=w.x+Math.cos(n)*side*11-Math.cos(w.hd)*3;ty=w.y+Math.sin(n)*side*11-Math.sin(w.hd)*3;
+  if(ts>e.fid){e.fid=ts+rnd(7e3,16e3);e.fx=rnd(-6,6);e.fy=rnd(-6,6);e.fUntil=ts+1400}
+  if(e.fUntil>ts){tx+=e.fx;ty+=e.fy}
+  if(!isFree(G.nav,tx,ty)){const h=w.hist;const q=h[Math.max(0,h.length-6)]||w;tx=q.x;ty=q.y}
+ }else{let acc=0,h=w.hist,q=h[h.length-1]||w,prev={x:w.x,y:w.y}; // ~16 px derrière, sur ses traces
+  for(let i=h.length-1;i>=0;i--){acc+=Math.hypot(h[i].x-prev.x,h[i].y-prev.y);prev=h[i];q=h[i];if(acc>=16)break}tx=q.x;ty=q.y}
+ const dx=tx-e.x,dy=ty-e.y,d=Math.hypot(dx,dy);
+ if(d>1.2){const lv=Math.max(SPEED,SPEED*w.base*Math.max(.3,w.cm)),v=Math.min(d,lv*dt*(d>22?2.2:d>10?1.3:.8));e.x+=dx/d*v;e.y+=dy/d*v;e.dist+=v;e.hd=lerpA(e.hd,Math.atan2(dy,dx),Math.min(1,dt/180));e.last=ts;e.standing=false;
+  while(e.dist>=e.next){const p={x:e.x,y:e.y,ang:e.hd+rnd(-.12,.12),side:(e.n0++%2)?1:-1,t:ts,ink:rnd(.75,.95),off:2,small:1};e.prints.push(p);
+   const old=e.prints[e.prints.length-3];if(old&&!old.free)old.free=ts;e.next+=4.5*rnd(.85,1.15)}}
+ else if(!e.standing&&ts-e.last>500){const l=e.prints[e.prints.length-1];if(l){const p={...l,side:-l.side,t:ts,free:0};e.prints.push(p);const old=e.prints[e.prints.length-3];if(old&&!old.free)old.free=ts}e.standing=true}
+}
 function printAlpha(w,p,ts){const age=ts-p.t;if(age<0)return 0;const inA=Math.min(1,age/INK_IN);
  if(!p.free)return .9*p.ink*inA;
  const ref=Math.max(p.t+INK_IN,p.free)+FADE_HOLD;
  return .9*p.ink*inA*Math.max(0,1-Math.max(0,ts-ref)/FADE_OUT)}
-function drawFoot(ctx,p,a,ts){if(a<=0)return;const s=.72+.28*Math.min(1,(ts-p.t)/INK_IN),n=p.ang+Math.PI/2;
+function drawFoot(ctx,p,a,ts){if(a<=0)return;const s=(p.small?.55:1)*(.72+.28*Math.min(1,(ts-p.t)/INK_IN)),n=p.ang+Math.PI/2;
  ctx.save();ctx.translate(p.x+Math.cos(n)*p.side*p.off,p.y+Math.sin(n)*p.side*p.off);ctx.rotate(n);ctx.scale(s,s);
- ctx.globalAlpha=a;ctx.beginPath();ctx.ellipse(0,-.8,2.2,3.2,0,0,7);ctx.fill();ctx.beginPath();ctx.ellipse(0,3.6,1.6,1.4,0,0,7);ctx.fill();ctx.restore()}
+ ctx.globalAlpha=a;
+ if(p.small){ctx.beginPath();ctx.ellipse(0,-1.4,1.5,4,0,0,7);ctx.fill();for(let t=-1;t<=1;t++){ctx.beginPath();ctx.arc(t*1.1,-6.2,.7,0,7);ctx.fill()}ctx.beginPath();ctx.ellipse(0,3.4,1.2,1.3,0,0,7);ctx.fill()} // pied nu d'elfe, orteils visibles
+ else{ctx.beginPath();ctx.ellipse(0,-.8,2.2,3.2,0,0,7);ctx.fill();ctx.beginPath();ctx.ellipse(0,3.6,1.6,1.4,0,0,7);ctx.fill()}
+ ctx.restore()}
 
 function drawWalkers(ctx,walkers,ts,alpha,G){
  walkers.forEach(w=>{if(w.base==null){initWalker(G,w,ts,walkers);w.lastTs=ts}});
- walkers.forEach(w=>{const dt=Math.min(100,ts-w.lastTs);w.lastTs=ts;updateWalker(G,w,ts,dt,walkers)});
+ walkers.forEach(w=>{const dt=Math.min(100,ts-w.lastTs);w.lastTs=ts;updateWalker(G,w,ts,dt,walkers);if(w.comp==='elf'&&!w.ghost)updateElf(G,w,ts,dt)});
  ctx.fillStyle='rgba(59,36,18,.9)';ctx.textAlign='center';ctx.textBaseline='middle';
  const labels=[];
  walkers.forEach(w=>{
@@ -563,6 +607,16 @@ function drawWalkers(ctx,walkers,ts,alpha,G){
    labels.push({w,x:h.x,y:h.y,a:.6,an:.4});return}
   w.prints=w.prints.filter(p=>!p.free||printAlpha(w,p,ts)>0||ts<p.t+INK_IN);
   w.prints.forEach(p=>drawFoot(ctx,p,printAlpha(w,p,ts)*alpha,ts));
+  if(w.elf){const e=w.elf;e.prints=e.prints.filter(p=>!p.free||printAlpha(e,p,ts)>0||ts<p.t+INK_IN);
+   e.prints.forEach(p=>drawFoot(ctx,p,printAlpha(e,p,ts)*alpha,ts));
+   if(e.lx==null){e.lx=e.x;e.ly=e.y}e.lx+=(e.x-e.lx)*.1;e.ly+=(e.y-e.ly)*.1;
+   ctx.globalAlpha=.7*alpha;ctx.font='italic 9px "IM Fell English",Georgia,serif';ctx.fillText('Dobby junior',e.lx,e.ly+11);ctx.globalAlpha=1}
+  /* conversation : petits points de suspension et onomatopées entre les deux */
+  const B=w.talk;if(B&&w.state==='stand'&&w.talkT&&Math.hypot(B.x-w.x,B.y-w.y)<30){const mx=(w.x+B.x)/2,my=(w.y+B.y)/2-4,c=((ts-w.talkT)/450|0)%4;
+   ctx.globalAlpha=.55*alpha;for(let k=0;k<Math.min(3,c);k++){ctx.beginPath();ctx.arc(mx-3+k*3,my,.8,0,7);ctx.fill()}
+   const ph=(ts-w.talkT)%7000;if(ph>3500&&ph<6000){const W2=['ha ha','bla bla','oh !','?!','hi hi','…et là'];const word=W2[(((ts-w.talkT)/7000|0)+hash(w.n))%W2.length];
+    ctx.globalAlpha=.5*alpha*Math.sin((ph-3500)/2500*Math.PI);ctx.font='italic 9px "IM Fell English",Georgia,serif';ctx.fillText(word,mx,my-9)}
+   ctx.globalAlpha=1}
   if(w.lx==null){w.lx=w.x;w.ly=w.y}
   const k=Math.min(1,(ts-(w.lt||ts))/140);w.lt=ts;w.lx+=(w.x-w.lx)*k;w.ly+=(w.y-w.ly)*k;
   labels.push({w,x:w.lx+Math.cos(w.hd)*4,y:w.ly+Math.sin(w.hd)*4,a:1,an:.65});

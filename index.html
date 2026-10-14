@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 17 -->
+<!-- version 19 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -338,7 +338,7 @@ function geom(W,H,top,bottom){
  const cnt={},idx=list.map(p=>{const k=p.room||'';cnt[k]=(cnt[k]||0);return cnt[k]++});
  const walkers=list.map((p,i)=>{const b=rooms.find(r=>r.n===p.room)||all;
   const n=cnt[p.room||''],rs=(hash(p.room||'*')%1000)/1000,ghost=b===all;
-  return{n:p.n,note:p.note,b,ghost,phase:idx[i]/n*Math.PI*2,sp:(.018+rs*.006)/((b.w*.36+b.h*.3)/2),k:1+Math.round(rs*2)}});
+  return{n:p.n,note:p.note,b,ghost,phase:idx[i]/n*Math.PI*2,sp:1,k:1+Math.round(rs*2)}});
  return{rooms,walkers,castle:{x:pad,y:top,w:gw,h:gh},top};
 }
 
@@ -413,52 +413,49 @@ function pos(w,t){const b=w.b,a=w.phase+t*w.sp,mx=b.w*.36,my=b.h*.3;
 /* Humeur de chaque invité : marche, flâne, se presse, ou s'arrête (parfois plusieurs minutes) */
 const rnd=(a,b)=>a+Math.random()*(b-a);
 function nextMood(w){const r=Math.random();
- if(r<.42){w.target=rnd(.8,1.2);w.until=w.clock+rnd(8e3,25e3)}          // marche
- else if(r<.56){w.target=rnd(1.6,2.2);w.until=w.clock+rnd(3e3,8e3)}     // se presse
- else if(r<.72){w.target=rnd(.3,.55);w.until=w.clock+rnd(6e3,16e3)}     // flâne
+ if(r<.42){w.target=rnd(.85,1.1);w.until=w.clock+rnd(8e3,25e3)}          // marche
+ else if(r<.56){w.target=rnd(1.3,1.55);w.until=w.clock+rnd(3e3,8e3)}     // se presse
+ else if(r<.72){w.target=rnd(.4,.6);w.until=w.clock+rnd(6e3,16e3)}     // flâne
  else{w.target=0;w.until=w.clock+(Math.random()<.25?rnd(60e3,240e3):rnd(6e3,40e3))} // s'arrête
 }
+const SPEED=.008,STRIDE=8,N=7; // 8 px/s à allure normale, un pas tous les 8 px
+function here(w,u){const[x,y]=pos(w,u),[x2,y2]=pos(w,u+.001);return{x,y,ang:Math.atan2(y2-y,x2-x),dpu:Math.hypot(x2-x,y2-y)/.001}}
 function stepWalkers(walkers,ts){
  walkers.forEach(w=>{
-  if(w.u==null){w.u=Math.random()*1e5;w.base=rnd(.6,1.4);w.cm=1;w.clock=0;w.lastTs=ts;w.stepAt=ts;w.cur=null;nextMood(w)}
+  if(w.u==null){w.u=Math.random()*Math.PI*2;w.base=rnd(.7,1.15);w.cm=1;w.clock=0;w.lastTs=ts;w.stepAt=ts;w.dist=0;w.next=STRIDE;w.prints=[];w.n0=0;nextMood(w)}
   const dt=Math.min(100,ts-w.lastTs);w.lastTs=ts;w.clock+=dt;
   if(w.clock>w.until)nextMood(w);
-  w.cm+=(w.target-w.cm)*Math.min(1,dt/700);                 // changement d'allure progressif
+  w.cm+=(w.target-w.cm)*Math.min(1,dt/700);
   if(w.target===0&&w.cm<.04)w.cm=0;
-  w.u+=dt*w.base*w.cm;
+  const v=SPEED*w.base*w.cm*dt,h=here(w,w.u);
+  w.u+=v/Math.max(.001,h.dpu);w.dist+=v;                          // avance à vitesse réelle constante
+  while(w.dist>=w.next){const p=here(w,w.u);w.prints.push({x:p.x,y:p.y,ang:p.ang,side:(w.n0++%2?1:-1)});
+   if(w.prints.length>N)w.prints.shift();w.next+=STRIDE;w.stepAt=ts}
  });
 }
+function drawFoot(ctx,p,side,a){
+ ctx.save();ctx.translate(p.x+Math.cos(p.ang+Math.PI/2)*side*3.6,p.y+Math.sin(p.ang+Math.PI/2)*side*3.6);ctx.rotate(p.ang+Math.PI/2);
+ ctx.globalAlpha=a;ctx.beginPath();ctx.ellipse(0,-.8,2.2,3.2,0,0,7);ctx.fill();ctx.beginPath();ctx.ellipse(0,3.6,1.6,1.4,0,0,7);ctx.fill();ctx.restore()}
+function label(ctx,w,x,y,a,an){ctx.globalAlpha=a;ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,x,y-14);
+ if(w.note){ctx.globalAlpha=an;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,x,y-27)}ctx.globalAlpha=1}
 function drawWalkers(ctx,walkers,ts,alpha){
  stepWalkers(walkers,ts);
  ctx.fillStyle='rgba(59,36,18,.9)';
  walkers.forEach(w=>{
-  const U=w.u;
+  const h=here(w,w.u);
   if(w.ghost){ /* Fantôme : glisse à travers les murs, empreintes pâles et continues */
-   for(let j=0;j<6;j++){const t=U-j*380,[x,y]=pos(w,t),[x2,y2]=pos(w,t+40);
-    const ang=Math.atan2(y2-y,x2-x),side=(j%2?1:-1)*4;
-    ctx.save();ctx.translate(x+Math.cos(ang+Math.PI/2)*side,y+Math.sin(ang+Math.PI/2)*side);ctx.rotate(ang+Math.PI/2);
-    ctx.globalAlpha=(1-j/6)*.5*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
-   const[gx,gy]=pos(w,U);ctx.globalAlpha=.6*alpha;
-   ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,gx,gy-14);
-   if(w.note){ctx.globalAlpha=.4*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,gx,gy-27)}
-   ctx.globalAlpha=1;return}
-  /* Vrais pas : un pied par foulée, posé et immobile, alterné gauche/droite */
-  const STEP=420,N=7,now=U/STEP,cur=Math.floor(now),fr=now-cur;
-  if(cur!==w.cur){w.cur=cur;w.stepAt=ts}
-  const still=ts-w.stepAt;                                        // temps depuis le dernier pas
-  const foot=(m,side,a)=>{const t=m*STEP,[x,y]=pos(w,t),[x2,y2]=pos(w,t+60),ang=Math.atan2(y2-y,x2-x);
-   ctx.save();ctx.translate(x+Math.cos(ang+Math.PI/2)*side,y+Math.sin(ang+Math.PI/2)*side);ctx.rotate(ang+Math.PI/2);
-   ctx.globalAlpha=a;ctx.beginPath();ctx.ellipse(0,.8,2.2,3.2,0,0,7);ctx.fill();ctx.beginPath();ctx.ellipse(0,-3.6,1.6,1.4,0,0,7);ctx.fill();ctx.restore()};
-  const trailFade=Math.exp(-Math.max(0,still-1500)/4000);         // à l'arrêt, la traîne s'efface
-  for(let j=N-1;j>=0;j--){const m=cur-j,age=(j+Math.min(fr,.999))/N;
-   let a=Math.max(0,1-age)*.9;if(j===0)a*=Math.min(1,still/120);if(j>=2)a*=trailFade;
-   foot(m,(m%2?1:-1)*3.6,a*alpha)}
-  if(still>900){ /* immobile : les deux pieds côte à côte */
-   const a=Math.min(1,(still-900)/600)*.9*alpha;foot(cur,(cur%2?-1:1)*3.6,a)}
-  const[x,y]=pos(w,(cur-1)*STEP);ctx.globalAlpha=alpha;
-  ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,x,y-14);
-  if(w.note){ctx.globalAlpha=.65*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,x,y-27)}
-  ctx.globalAlpha=1;
+   const du=7/Math.max(.001,h.dpu);
+   for(let j=0;j<6;j++){const q=here(w,w.u-j*du);ctx.save();ctx.translate(q.x+Math.cos(q.ang+Math.PI/2)*(j%2?4:-4),q.y+Math.sin(q.ang+Math.PI/2)*(j%2?4:-4));
+    ctx.rotate(q.ang+Math.PI/2);ctx.globalAlpha=(1-j/6)*.5*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
+   label(ctx,w,h.x,h.y,.6*alpha,.4*alpha);return}
+  /* Vrais pas : chaque pied posé reste en place, la traîne pâlit, à l'arrêt les deux pieds se rejoignent */
+  const still=ts-w.stepAt,fr=Math.min(.999,(w.dist-(w.next-STRIDE))/STRIDE),k=w.prints.length;
+  const trail=Math.exp(-Math.max(0,still-1500)/4000);
+  w.prints.forEach((p,i)=>{const j=k-1-i;let a=Math.max(0,1-(j+fr)/N)*.9;
+   if(j===0)a*=Math.min(1,still/150);if(j>=2)a*=trail;drawFoot(ctx,p,p.side,a*alpha)});
+  const last=w.prints[k-1];
+  if(last&&still>900)drawFoot(ctx,last,-last.side,Math.min(1,(still-900)/600)*.9*alpha);
+  const at=last||h;label(ctx,w,at.x,at.y,alpha,.65*alpha);
  });
 }
 function fit(c){const d=devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;c.width=W*d;c.height=H*d;const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return[x,W,H]}

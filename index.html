@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 21 -->
+<!-- version 22 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -118,8 +118,11 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 
   <section>
    <h2>Ton nom sur la carte</h2>
-   <div class="row"><input type="text" id="me" placeholder="Ex. Coco">
-    <select id="meMode"><option value="visit">Se promène partout</option><option value="ghost">Fantôme</option></select></div>
+   <div class="item">
+    <input type="text" id="me" placeholder="Ex. Coco">
+    <input type="text" id="meNote" placeholder="Note (facultatif)">
+    <div id="meOpts" style="display:flex;flex-direction:column;gap:8px"></div>
+   </div>
   </section>
 
   <section>
@@ -280,23 +283,30 @@ function renderGuests(){
   </div>`).join('');
 }
 $('me').value=S.me||'';
-$('meMode').value=S.meMode||'visit';$('meMode').onchange=e=>{S.meMode=e.target.value;save();drawPreview()};
+$('meNote').value=S.meNote||'';$('meNote').oninput=e=>{S.meNote=e.target.value;save();drawPreview()};
+function renderMe(){const m=S.meMode||'visit';
+ $('meOpts').innerHTML=`<div class="row"><select id="meMode" style="flex:1 1 150px">${MODES.map(([v,l])=>`<option value="${v}"${m===v?' selected':''}>${l}</option>`).join('')}</select>
+  ${m==='ghost'?'':`<select id="meRoom" style="flex:1 1 120px" aria-label="${m==='visit'?'Pièce préférée':'Pièce'}">${roomOptions(S.meRoom,m)}</select>`}</div>
+  ${m==='ghost'?'':`<select id="meComp"><option value="">Pas de compagnon</option><option value="elf"${S.meComp==='elf'?' selected':''}>Suivi par Dobby junior</option></select>`}`}
+$('meOpts').addEventListener('input',e=>{const t=e.target;
+ if(t.id==='meMode'){S.meMode=t.value;if(t.value==='room'&&!S.rooms.some(r=>r.n===S.meRoom))S.meRoom=(S.rooms[0]||{}).n||'';renderMe()}
+ if(t.id==='meRoom')S.meRoom=t.value;if(t.id==='meComp')S.meComp=t.value;save();drawPreview()});
 $('lumode').value=S.lumode;$('lumode').onchange=e=>{S.lumode=e.target.value;save()};
 [0,1,2,3].forEach(i=>{const el=$('taunt'+i);el.value=S.taunt[i]||'';el.oninput=()=>{S.taunt[i]=el.value;save()}});
 [0,1,2].forEach(i=>{const el=$('insc'+i);el.value=S.insc[i]||'';el.oninput=()=>{S.insc[i]=el.value;save()}});
 $('me').oninput=e=>{S.me=e.target.value;save();drawPreview()};
 $('rooms').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null)return;
  const old=S.rooms[i].n;S.rooms[i][t.dataset.k]=t.dataset.k==='n'?t.value:+t.value;
- if(t.dataset.k==='n')S.guests.forEach(g=>{if(g.room===old)g.room=t.value});
+ if(t.dataset.k==='n'){S.guests.forEach(g=>{if(g.room===old)g.room=t.value});if(S.meRoom===old)S.meRoom=t.value;renderMe()}
  save();if(t.tagName==='SELECT'||t.dataset.k==='n'){if(t.dataset.k==='n')renderGuests()}drawPreview()});
-$('rooms').addEventListener('click',e=>{const d=e.target.dataset.delRoom;if(d==null)return;S.rooms.splice(d,1);save();renderRooms();renderGuests();drawPreview()});
+$('rooms').addEventListener('click',e=>{const d=e.target.dataset.delRoom;if(d==null)return;S.rooms.splice(d,1);save();renderRooms();renderGuests();renderMe();drawPreview()});
 $('guests').addEventListener('input',e=>{const t=e.target,i=t.dataset.g;if(i==null)return;const g=S.guests[i];g[t.dataset.k]=t.value;
  if(t.dataset.k==='mode'){if(g.mode==='room'&&!S.rooms.some(r=>r.n===g.room))g.room=(S.rooms[0]||{}).n||'';renderGuests()}
  save();drawPreview()});
 $('guests').addEventListener('click',e=>{const d=e.target.dataset.delGuest;if(d==null)return;S.guests.splice(d,1);save();renderGuests();drawPreview()});
-$('addRoom').onclick=()=>{S.rooms.push({n:'Nouvelle pièce',c:1,r:1,w:1,h:1});save();renderRooms();renderGuests();drawPreview()};
+$('addRoom').onclick=()=>{S.rooms.push({n:'Nouvelle pièce',c:1,r:1,w:1,h:1});save();renderRooms();renderGuests();renderMe();drawPreview()};
 $('addGuest').onclick=()=>{S.guests.push({n:'',note:'',room:'',mode:'visit'});save();renderGuests();$('gn'+(S.guests.length-1)).focus()};
-renderRooms();renderGuests();
+renderRooms();renderGuests();renderMe();
 
 /* ---------- Dessin de la carte ---------- */
 /* Hasard reproductible : même pièce = même forme à chaque lancement */
@@ -342,7 +352,7 @@ function geom(W,H,top,bottom){
   const o={n:r.n,x:ox+(c-1)*cw+g,y:oy+(rr-1)*ch+g,w:w*cw-g*2,h:h*ch-g*2};
   o.shape=roomShape(o,rng(hash(r.n+'|'+i)));return o});
  const all={x:pad+inset,y:top+inset,w:gw-inset*2,h:gh-inset*2};
- const list=[...(S.me?[{n:S.me,note:'',room:'',mode:S.meMode||'visit'}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
+ const list=[...(S.me?[{n:S.me,note:S.meNote||'',room:S.meRoom||'',mode:S.meMode||'visit',comp:S.meComp||''}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
  const walkers=list.map(p=>{const ri=S.rooms.findIndex(r=>r.n===p.room);let mode=p.mode||(p.room?'room':'ghost');
   if(mode==='room'&&ri<0)mode='visit';
   return{n:p.n,note:p.note,comp:p.comp||'',mode,ri:ri>=0?ri:null,ghost:mode==='ghost',b:all,phase:Math.random()*Math.PI*2,k:1+Math.floor(Math.random()*3)}});

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 14 -->
+<!-- version 16 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -156,7 +156,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 
   <section>
    <h2>Les invités</h2>
-   <p class="hint">Chaque nom se promène dans la pièce choisie. La note s'écrit en petit sous le nom.</p>
+   <p class="hint">Chaque nom marche pas à pas dans la pièce choisie. Avec « Partout · fantôme », il glisse à travers les murs de tout le château. La note s'écrit en petit au-dessus du nom.</p>
    <div id="guests" style="display:flex;flex-direction:column;gap:8px"></div>
    <button class="add" id="addGuest">+ Ajouter un invité</button>
   </section>
@@ -265,7 +265,7 @@ function renderRooms(){
    </div>
   </div>`).join('');
 }
-function roomOptions(sel){return `<option value="">Partout</option>`+S.rooms.map(r=>`<option${r.n===sel?' selected':''}>${esc(r.n)}</option>`).join('')}
+function roomOptions(sel){return `<option value="">Partout · fantôme</option>`+S.rooms.map(r=>`<option${r.n===sel?' selected':''}>${esc(r.n)}</option>`).join('')}
 function renderGuests(){
  $('guests').innerHTML=S.guests.map((g,i)=>`
   <div class="item">
@@ -337,8 +337,8 @@ function geom(W,H,top,bottom){
  const list=[...(S.me?[{n:S.me,note:'',room:''}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
  const cnt={},idx=list.map(p=>{const k=p.room||'';cnt[k]=(cnt[k]||0);return cnt[k]++});
  const walkers=list.map((p,i)=>{const b=rooms.find(r=>r.n===p.room)||all;
-  const n=cnt[p.room||''],rs=(hash(p.room||'*')%1000)/1000;
-  return{n:p.n,note:p.note,b,phase:idx[i]/n*Math.PI*2,sp:.00016+rs*.00012,k:1+Math.round(rs*2)}});
+  const n=cnt[p.room||''],rs=(hash(p.room||'*')%1000)/1000,ghost=b===all;
+  return{n:p.n,note:p.note,b,ghost,phase:idx[i]/n*Math.PI*2,sp:(.018+rs*.006)/((b.w*.36+b.h*.3)/2),k:1+Math.round(rs*2)}});
  return{rooms,walkers,castle:{x:pad,y:top,w:gw,h:gh},top};
 }
 
@@ -413,11 +413,26 @@ function pos(w,t){const b=w.b,a=w.phase+t*w.sp,mx=b.w*.36,my=b.h*.3;
 function drawWalkers(ctx,walkers,ts,alpha){
  ctx.fillStyle='rgba(59,36,18,.9)';
  walkers.forEach(w=>{
-  for(let j=0;j<6;j++){const t=ts-j*380,[x,y]=pos(w,t),[x2,y2]=pos(w,t+40);
-   const ang=Math.atan2(y2-y,x2-x),side=(j%2?1:-1)*4;
+  if(w.ghost){ /* Fantôme : glisse à travers les murs, empreintes pâles et continues */
+   for(let j=0;j<6;j++){const t=ts-j*380,[x,y]=pos(w,t),[x2,y2]=pos(w,t+40);
+    const ang=Math.atan2(y2-y,x2-x),side=(j%2?1:-1)*4;
+    ctx.save();ctx.translate(x+Math.cos(ang+Math.PI/2)*side,y+Math.sin(ang+Math.PI/2)*side);ctx.rotate(ang+Math.PI/2);
+    ctx.globalAlpha=(1-j/6)*.5*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
+   const[gx,gy]=pos(w,ts);ctx.globalAlpha=.6*alpha;
+   ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,gx,gy-14);
+   if(w.note){ctx.globalAlpha=.4*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,gx,gy-27)}
+   ctx.globalAlpha=1;return}
+  /* Vrais pas : un pied se pose toutes les 420 ms, reste en place, alterne gauche/droite, puis s'efface */
+  const STEP=420,N=7,now=ts/STEP,cur=Math.floor(now),fr=now-cur;
+  for(let j=0;j<N;j++){const m=cur-j,t=m*STEP,[x,y]=pos(w,t),[x2,y2]=pos(w,t+60);
+   const ang=Math.atan2(y2-y,x2-x),side=(m%2?1:-1)*3.6;
+   const age=(j+fr)/N,fade=j===0?Math.min(1,fr*4):1; // le dernier pied apparaît vite, les anciens pâlissent
    ctx.save();ctx.translate(x+Math.cos(ang+Math.PI/2)*side,y+Math.sin(ang+Math.PI/2)*side);ctx.rotate(ang+Math.PI/2);
-   ctx.globalAlpha=(1-j/6)*.85*alpha;ctx.beginPath();ctx.ellipse(0,0,2.3,4,0,0,7);ctx.fill();ctx.restore()}
-  const[x,y]=pos(w,ts);ctx.globalAlpha=alpha;
+   ctx.globalAlpha=Math.max(0,1-age)*.9*fade*alpha;
+   ctx.beginPath();ctx.ellipse(0,.8,2.2,3.2,0,0,7);ctx.fill();          // plante
+   ctx.beginPath();ctx.ellipse(0,-3.6,1.6,1.4,0,0,7);ctx.fill();        // talon
+   ctx.restore()}
+  const[x,y]=pos(w,ts-STEP);ctx.globalAlpha=alpha;
   ctx.font='italic 13px "IM Fell English",Georgia,serif';ctx.fillText(w.n,x,y-14);
   if(w.note){ctx.globalAlpha=.65*alpha;ctx.font='italic 10px "IM Fell English",Georgia,serif';ctx.fillText(w.note,x,y-27)}
   ctx.globalAlpha=1;

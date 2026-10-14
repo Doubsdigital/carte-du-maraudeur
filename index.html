@@ -65,7 +65,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 #stage{position:fixed;inset:0;background:var(--night);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;overflow:hidden}
 #lock,#map{position:absolute;inset:0;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
-  padding-block:calc(env(safe-area-inset-top,0px) + 56px) calc(env(safe-area-inset-bottom,0px) + 28px)}
+  padding-block:calc(env(safe-area-inset-top,0px) + 34px) calc(env(safe-area-inset-bottom,0px) + 30px)}
 #lock{display:flex;flex-direction:column;align-items:center;color:var(--clock);transition:opacity .6s}
 #time{font-size:clamp(64px,22vw,110px);font-weight:300;letter-spacing:-2px;font-variant-numeric:tabular-nums}
 #time .c{display:inline-block}
@@ -325,8 +325,8 @@ function roomShape(r,R){
  return{pts,doors,tower,stairs};
 }
 
-function geom(W,H,top){
- const pad=W*.07, gw=W-pad*2, gh=H-top-pad*1.2, inset=14, cw=(gw-inset*2)/COLS, ch=(gh-inset*2)/ROWS, g=7;
+function geom(W,H,top,bottom){
+ const pad=W*.07, gw=W-pad*2, gh=H-top-(bottom??pad*1.2), inset=14, cw=(gw-inset*2)/COLS, ch=(gh-inset*2)/ROWS, g=7;
  const ox=pad+inset, oy=top+inset;
  const rooms=S.rooms.map((r,i)=>{const c=Math.min(r.c,COLS),rr=Math.min(r.r,ROWS);
   const w=Math.min(r.w,COLS-c+1),h=Math.min(r.h,ROWS-rr+1);
@@ -334,9 +334,10 @@ function geom(W,H,top){
   o.shape=roomShape(o,rng(hash(r.n+'|'+i)));return o});
  const all={x:pad+inset,y:top+inset,w:gw-inset*2,h:gh-inset*2};
  const list=[...(S.me?[{n:S.me,note:'',room:''}]:[]),...S.guests.filter(g=>g.n&&g.n.trim())];
+ const cnt={},idx=list.map(p=>{const k=p.room||'';cnt[k]=(cnt[k]||0);return cnt[k]++});
  const walkers=list.map((p,i)=>{const b=rooms.find(r=>r.n===p.room)||all;
-  const seed=(i*9301+49297)%233280/233280;
-  return{n:p.n,note:p.note,b,phase:seed*6.28,sp:.00016+seed*.00014,k:1.2+seed*.6}});
+  const n=cnt[p.room||''],rs=(hash(p.room||'*')%1000)/1000;
+  return{n:p.n,note:p.note,b,phase:idx[i]/n*Math.PI*2,sp:.00016+rs*.00012,k:1+Math.round(rs*2)}});
  return{rooms,walkers,castle:{x:pad,y:top,w:gw,h:gh},top};
 }
 
@@ -489,7 +490,8 @@ setInterval(tick,5000);tick();
 
 let PAP,INKL;
 function sizeStage(){[ctx,W,H]=fit(cv);const words=document.querySelector('.words');
- const top=Math.max(words.offsetTop+words.offsetHeight+22,H*.28);G=geom(W,H,top);const d=devicePixelRatio||1;PAP=paperLayer(W,H,d);INKL=inkLayer(W,H,d,G)}
+ const top=Math.max(words.offsetTop+words.offsetHeight+30,H*.26);
+ const bottom=parseFloat(getComputedStyle($('map')).paddingBottom)+12;G=geom(W,H,top,bottom);const d=devicePixelRatio||1;PAP=paperLayer(W,H,d);INKL=inkLayer(W,H,d,G)}
 function frame(ts){const e=ts-t0;ctx.clearRect(0,0,W,H);
  ctx.globalAlpha=1;if(inkOut){const f=Math.max(0,1-(ts-inkOut)/1400);cv.style.opacity=f}else cv.style.opacity=1;
  ctx.drawImage(PAP,0,0,W,H);
@@ -542,9 +544,14 @@ function closeMap(){if(!isMapOpen||Date.now()<coolUntil)return;isMapOpen=false;c
 
 let wake=null;
 async function getWake(){try{wake=await navigator.wakeLock.request('screen')}catch(e){}}
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement)fullAsked=false});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!stage.hidden)getWake()});
 
+const INSTALLED=matchMedia('(display-mode: fullscreen)').matches||matchMedia('(display-mode: standalone)').matches;
+let fullAsked=false;
 async function goFull(){
+ if(INSTALLED||document.fullscreenElement||fullAsked)return; // app installée : déjà en plein écran, pas de bandeau Chrome
+ fullAsked=true;
  const el=document.documentElement;
  try{if(!document.fullscreenElement&&el.requestFullscreen)await el.requestFullscreen({navigationUI:'hide'})}catch(e){}
  try{await screen.orientation.lock('portrait')}catch(e){}

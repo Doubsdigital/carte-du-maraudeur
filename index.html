@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
+<!-- version 11 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -596,7 +597,17 @@ addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('inst
 $('install').onclick=async()=>{if(!deferred)return;deferred.prompt();await deferred.userChoice;deferred=null;$('install').hidden=true};
 const WANT_SETUP=/[?&]reglages/.test(location.search)||location.hash==='#reglages';
 if(!WANT_SETUP&&!FIRST_RUN)startShow();
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker'in navigator){
+ const hadCtrl=!!navigator.serviceWorker.controller;let reloaded=false;
+ /* Nouvelle version installée : on recharge, sauf en plein tour */
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{
+  if(!hadCtrl||reloaded)return;
+  const busy=isMapOpen||tauntOpen||lit;
+  const go=()=>{if(reloaded)return;reloaded=true;location.reload()};
+  if(!busy)go();else document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')go()},{once:true});
+ });
+ navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+}
 </script>
 </body>
 </html>

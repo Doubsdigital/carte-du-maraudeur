@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Carte du Maraudeur</title>
-<!-- version 25 -->
+<!-- version 26 -->
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
@@ -71,6 +71,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 #time{font-size:clamp(64px,22vw,110px);font-weight:300;letter-spacing:-2px;font-variant-numeric:tabular-nums}
 #time .c{display:inline-block}
 #stage.listening #time .c{animation:blink 1s steps(1) infinite}
+#stage.armed #time .c{animation:none!important;opacity:1}
 @keyframes blink{50%{opacity:.15}}
 #date{font-size:17px;color:var(--dim);margin-top:4px;text-transform:capitalize}
 #map{background:radial-gradient(ellipse at 50% 40%,var(--paper) 55%,var(--paper-edge) 130%);
@@ -113,7 +114,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
  <div class="wrap">
   <header>
    <h1>Carte du Maraudeur</h1>
-   <p>Tout ce que tu saisis reste sur ce téléphone. · v25</p>
+   <p>Tout ce que tu saisis reste sur ce téléphone. · v26</p>
   </header>
 
   <section>
@@ -140,6 +141,12 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
     <option value="screen">Passe l'écran en blanc</option>
    </select><button class="ghost" id="testTorch">Tester</button></div>
    <p class="hint" id="torchMsg">Teste une fois avant la soirée pour autoriser l'accès à la lampe. Si la LED ne répond pas, l'écran passe en blanc à la place.</p>
+  </section>
+
+  <section>
+   <h2>Vibromassorum</h2>
+   <div class="row"><button class="ghost" id="testVibe">Tester le vibreur</button></div>
+   <p class="hint" id="vibeMsg">Chrome n'autorise le vibreur qu'après un premier contact avec l'écran. Pendant le tour, touche l'écran noir une fois discrètement après l'ouverture : les deux-points de l'heure deviennent alors fixes une seconde pour te confirmer que tout est prêt.</p>
   </section>
 
   <section>
@@ -187,6 +194,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
     <li>« Méfait accompli » efface l'encre et le parchemin redevient vierge.</li>
     <li>« Lumos » à tout moment allume la lampe torche, ou l'écran en blanc selon ton réglage. « Nox » l'éteint.</li>
     <li>« Révèle tous tes secrets » : la carte répond par ses quatre messages. « Méfait accompli » efface tout.</li>
+    <li>Touche l'écran noir une fois après l'ouverture (les deux-points restent fixes une seconde) : c'est ce qui débloque le vibreur.</li>
     <li>« Vibromassorum » fait vibrer le téléphone de plus en plus fort pendant une dizaine de secondes. « Finite Incantatem » l'arrête net.</li>
     <li>Secours : sur l'écran noir, un appui normal puis un appui long ouvre la carte. Huit appuis rapides n'importe où sur la carte ou les messages font « Méfait accompli ». Double appui sur l'écran blanc pour Nox.</li>
     <li>L'app s'ouvre directement sur le faux écran verrouillé. Si les deux-points ne clignotent pas, touche l'écran une fois pour lancer l'écoute.</li>
@@ -760,12 +768,15 @@ function closeTaunt(){if(!tauntOpen)return;tauntOpen=false;
  setTimeout(()=>stage.classList.remove('taunt'),700)}
 /* Vibromassorum : crescendo puis tremblement, ~10 s ou jusqu'à Finite Incantatem */
 let vibroT=null;
-function vibro(){if(!navigator.vibrate)return;unvibro();
- const p=[150,120,150,120,250,100,250,100,400,80,400,80,600,60,800,60];
- for(let i=0;i<14;i++)p.push(90,40);p.push(1500,80,2000);
- navigator.vibrate(p);stage.classList.add('shake');
- vibroT=setTimeout(unvibro,p.reduce((a,b)=>a+b,0))}
-function unvibro(){clearTimeout(vibroT);navigator.vibrate&&navigator.vibrate(0);stage.classList.remove('shake')}
+let vibroOn=false,vibroOk=null;
+const VPAT=(()=>{const p=[150,120,150,120,250,100,250,100,400,80,400,80,600,60,800,60];for(let i=0;i<14;i++)p.push(90,40);p.push(1500,80,2000);return p})();
+function vibro(){if(vibroOn)return; // déjà en cours : on ne relance pas (une relance coupait la vibration)
+ vibroOn=true;stage.classList.add('shake');
+ try{vibroOk=navigator.vibrate?navigator.vibrate(VPAT):false}catch(e){vibroOk=false}
+ vibroT=setTimeout(unvibro,VPAT.reduce((a,b)=>a+b,0))}
+function unvibro(){clearTimeout(vibroT);if(vibroOn&&navigator.vibrate)try{navigator.vibrate(0)}catch(e){}vibroOn=false;stage.classList.remove('shake')}
+/* Chrome bloque le vibreur tant que l'écran n'a pas été touché : le premier contact, même discret, le débloque */
+const activated=()=>!navigator.userActivation||navigator.userActivation.hasBeenActive;
 let torchTrack=null,torchVid=null,torchLog=[];
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 /* Ouvre une caméra, lance réellement le flux (Samsung n'expose la lampe qu'après), et vérifie qu'elle a une LED */
@@ -850,6 +861,13 @@ async function startShow(){
  listenShow();
 }
 $('go').onclick=startShow;
+$('testVibe').onclick=()=>{const m=$('vibeMsg');
+ if(!navigator.vibrate){m.textContent='Ce navigateur ne donne pas accès au vibreur (c\'est le cas sur iPhone).';return}
+ let ok=false;try{ok=navigator.vibrate([400,150,400,150,800])}catch(e){}
+ m.textContent=ok?'Commande envoyée. Si rien ne vibre : Paramètres → Sons et vibrations → mode « Son » ou « Vibreur » (pas « Muet »), et Intensité des vibrations → Retour tactile / Notifications au-dessus de zéro.':'Chrome a refusé la vibration. Réessaie après avoir touché l\'écran.'};
+/* Premier contact pendant le tour : confirme discrètement que le vibreur est débloqué */
+let armedShown=false;
+stage.addEventListener('pointerdown',()=>{if(armedShown)return;armedShown=true;stage.classList.add('armed');try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}setTimeout(()=>stage.classList.remove('armed'),1200)},true);
 /* Filet de sécurité : si Chrome a bloqué l'écoute au lancement, le premier appui la démarre */
 stage.addEventListener('pointerdown',()=>{if(!stage.classList.contains('listening'))listenShow();goFull()},true);
 /* Secours tactile */
